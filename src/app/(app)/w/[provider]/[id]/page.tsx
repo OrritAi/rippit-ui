@@ -1,18 +1,19 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, use } from "react";
-import { useRouter, useSearchParams, notFound } from "next/navigation";
+import { useSearchParams, notFound } from "next/navigation";
 import Link from "next/link";
 import { Activity, HeartPulse, History, Info, MessageSquare, NotebookPen } from "lucide-react";
 import { fetchExecutions, fetchComments, fetchWorkflowChanges, markWorkflowSeen, setWatch } from "@/app/lib/api";
 import type { ExecutionsResponse, Issue, NodeId, Tag, WorkflowChanges } from "@/app/lib/api";
 import { getConnector, isProviderId } from "@/lib/connectors";
 import type { WorkflowData } from "@/lib/connectors/types";
-import { parsePortalId, withPortals, workflowHref, WorkflowRef } from "@/lib/portals";
+import { parsePortalId, withPortals, WorkflowRef } from "@/lib/portals";
 import { useConnections, useWorkflowIndex } from "@/components/app/ConnectionsProvider";
 import { useAuth } from "@/components/app/AuthProvider";
 import { usePaletteScope } from "@/components/palette/palette-context";
-import ScenarioCanvas from "@/components/canvas/ScenarioCanvas";
+import { WorkflowCanvas } from "@/components/canvas/WorkflowCanvas";
+import { LinkedWorkflowPanel } from "@/components/canvas/LinkedWorkflowPanel";
 import { ActionBar, type DockTool } from "@/components/canvas/ActionBar";
 import { ConnectedChips } from "@/components/canvas/ConnectedChips";
 import { CaptureNotice } from "@/components/shared/CaptureBadge";
@@ -41,7 +42,6 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
   if (!isProviderId(provider)) notFound();
   const connector = getConnector(provider);
 
-  const router = useRouter();
   const searchParams = useSearchParams();
   const requestedStep = searchParams.get("step") ?? searchParams.get("node");
   const { user } = useAuth();
@@ -55,6 +55,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
 
   // The single dock occupant.
   const [tool, setTool] = useState<DockTool | null>(null);
+  const [expandedWorkflow, setExpandedWorkflow] = useState<WorkflowRef | null>(null);
   const [selectedId, setSelectedId] = useState<NodeId | null>(null);
   const [nodeDetail, setNodeDetail] = useState<unknown | null>(null);
   const [nodeError, setNodeError] = useState(false);
@@ -232,9 +233,13 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
     (nodeId: NodeId) => {
       const portal = parsePortalId(nodeId);
       if (portal) {
-        router.push(workflowHref(portal));
+        setTool(null);
+        setSelectedId(null);
+        setStepParam(null);
+        setExpandedWorkflow(portal);
         return;
       }
+      setExpandedWorkflow(null);
       setTool(null);
       setSelectedId(nodeId);
       setStepParam(nodeId);
@@ -247,10 +252,11 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
         .catch(() => setNodeError(true))
         .finally(() => setNodeLoading(false));
     },
-    [connector, id, router, setStepParam]
+    [connector, id, setStepParam]
   );
 
   const closeNode = useCallback(() => {
+    setExpandedWorkflow(null);
     setSelectedId(null);
     setNodeDetail(null);
     setNodeError(false);
@@ -260,6 +266,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
 
   const openTool = useCallback(
     (t: DockTool) => {
+      setExpandedWorkflow(null);
       setTool((cur) => {
         const next = cur === t ? null : t;
         if (next) {
@@ -302,6 +309,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
     )
   );
 
+  const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [changesReload, setChangesReload] = useState(0);
 
@@ -309,11 +317,12 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
   // copy server-side), then re-pull runs + changes so everything reflects it.
   const refresh = useCallback(() => {
     setRefreshing(true);
+    setRefreshNotice(null);
     Promise.all([
-      connector.loadWorkflow(id, true).then(setData),
+      connector.loadWorkflow(id, true).then(d => { setData(d); setRefreshNotice(d.summary.historyWarning ?? null); }),
       provider === "make" ? fetchExecutions(provider, id).then(setRuns).catch(() => {}) : Promise.resolve(),
     ])
-      .catch(() => {})
+      .catch(() => setRefreshNotice("Could not refresh this workflow. Showing the last loaded version."))
       .finally(() => {
         fetchWorkflowChanges(provider, id)
           .then((d) => {
@@ -369,7 +378,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
   const mapHref = `/map?focus=${encodeURIComponent(`${provider}:${id}`)}`;
   const folderPath = indexEntry?.groupPath?.slice(-1)[0] ?? null;
   const needsReauth = connection?.status === "needs_reauth";
-  const dockOpen = selectedId != null || tool != null;
+  const dockOpen = selectedId != null || tool != null || expandedWorkflow != null;
 
   return (
     <div className="flex h-full min-w-0 flex-col">
@@ -425,17 +434,23 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
         </div>
       )}
 
+      {refreshNotice && <p role="alert" className="border-b border-line px-3 py-2 text-[12px] text-warn-text">{refreshNotice}</p>}
       <ConnectedChips linkMap={linkMap} self={self} />
 
       <div className="relative flex min-h-0 flex-1">
         <div className="relative min-w-0 flex-1">
-          <ScenarioCanvas
+          <WorkflowCanvas
+            key={`${provider}:${id}`}
+            provider={provider}
+            workflowId={id}
+            revision={changesReload}
             modules={(canvasData ?? summary).modules}
             connections={(canvasData ?? summary).connections}
             selectedId={selectedId}
             onNodeClick={selectNode}
             live={live && provider === "make"}
             dockOpen={dockOpen}
+            dockWidth={expandedWorkflow ? 560 : undefined}
             runStats={runStats}
             onZoomChange={setZoom}
           />
@@ -459,6 +474,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
           )}
 
           {/* ---- the dock: exactly one occupant ---- */}
+          {expandedWorkflow && <LinkedWorkflowPanel key={`${expandedWorkflow.source}:${expandedWorkflow.refId}`} target={expandedWorkflow} onClose={() => setExpandedWorkflow(null)} />}
           {selectedModule && (
             <NodeInspector
               provider={provider}

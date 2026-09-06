@@ -1,5 +1,7 @@
 "use client";
 
+import { SoftwareLogo } from "@/components/shared/SoftwareLogo";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Maximize2, Minus, Plus } from "lucide-react";
 import { appColor, appGlyph, appName } from "@/lib/apps";
@@ -100,9 +102,11 @@ export default function ScenarioCanvas({
   onNodeClick,
   live = false,
   dockOpen = false,
+  dockWidth,
   runStats,
   onZoomChange,
   entrance = true,
+  matchingNodeIds,
 }: {
   modules: ModuleInfo[];
   connections: Connection[];
@@ -113,11 +117,16 @@ export default function ScenarioCanvas({
   live?: boolean;
   /** A right dock is open: fit leaves room for it. */
   dockOpen?: boolean;
+  /** Actual reserved dock width in px. Defaults to 330 when dockOpen is true;
+   *  the linked-workflow panel opens wider (560), so it passes this. */
+  dockWidth?: number;
   /** Optional per-step run line, keyed by node id. */
   runStats?: Record<string, RunStat>;
   onZoomChange?: (zoom: number) => void;
   /** Stagger the nodes in on first paint. */
   entrance?: boolean;
+  /** Filter emphasis preserves every branch and its context. */
+  matchingNodeIds?: Set<string> | null;
 }) {
   const [cam, setCam] = useState({ zoom: 0.8, panX: 0, panY: 0 });
   const [drag, setDrag] = useState(false);
@@ -208,7 +217,8 @@ export default function ScenarioCanvas({
     if (!el) return;
     const r = el.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) return;
-    const availW = r.width - (dockOpen ? 330 : 50);
+    const reserved = dockOpen ? (dockWidth ?? 330) : 50;
+    const availW = r.width - reserved;
     const availH = r.height - 70;
     const z = Math.max(FIT_MIN, Math.min(FIT_MAX, availW / layout.w, availH / layout.h));
     const cw = layout.w * z;
@@ -219,7 +229,7 @@ export default function ScenarioCanvas({
     const panY = ch <= availH ? (availH - ch) / 2 + 10 : 10;
     setGlide(false);
     setCam({ zoom: z, panX, panY });
-  }, [layout, dockOpen]);
+  }, [layout, dockOpen, dockWidth]);
 
   const fitRef = useRef(fit);
   useEffect(() => {
@@ -258,7 +268,7 @@ export default function ScenarioCanvas({
       if (!el || !n) return;
       const r = el.getBoundingClientRect();
       const z = cam.zoom;
-      const right = dockOpen ? 330 : 20;
+      const right = dockOpen ? (dockWidth ?? 330) : 20;
       const cx = 20 + (r.width - 20 - right) / 2;
       const cy = 40 + (r.height - 60) / 2;
       // Only move when the node is outside the comfortable box.
@@ -269,7 +279,7 @@ export default function ScenarioCanvas({
       setGlide(false);
       setCam((c) => ({ ...c, panX: cx - z * n.cx, panY: cy - z * n.cy }));
     },
-    [byId, cam.zoom, cam.panX, cam.panY, dockOpen]
+    [byId, cam.zoom, cam.panX, cam.panY, dockOpen, dockWidth]
   );
 
   const zoomBy = useCallback((f: number, ax?: number, ay?: number) => {
@@ -483,7 +493,16 @@ export default function ScenarioCanvas({
   }, [connections, byId]);
 
   const worldTrans = drag || glide || !settled ? "transform 0s" : "transform .45s var(--ease-out)";
-  const enter = entrance && !lite && !reduced;
+  // Entrance is a one-shot: it plays on first paint, then latches off, so
+  // toggling a filter (which flips matchingNodeIds) can never replay it on an
+  // already-settled canvas.
+  const [entranceDone, setEntranceDone] = useState(false);
+  useEffect(() => {
+    if (!entrance || lite || reduced) return;
+    const t = setTimeout(() => setEntranceDone(true), 1600);
+    return () => clearTimeout(t);
+  }, [entrance, lite, reduced]);
+  const enter = entrance && !lite && !reduced && !entranceDone;
 
   return (
     <div className="absolute inset-0 overflow-hidden bg-plane" onKeyDown={canvasKeyDown}>
@@ -646,7 +665,11 @@ export default function ScenarioCanvas({
                     left: n.cx - 80,
                     top: n.cy - 18,
                     touchAction: "none",
-                    animation: enter ? `fadeUp .4s var(--ease-out) .4s both` : undefined,
+                    // Portals can't match a software/trigger/asset filter, so a
+                    // filtered view dims them like every other non-match rather
+                    // than leaving them lit over a greyed canvas.
+                    opacity: matchingNodeIds && !matchingNodeIds.has(String(n.id)) && !selected ? 0.3 : 1,
+                    animation: enter && !matchingNodeIds ? `fadeUp .4s var(--ease-out) .4s both` : undefined, // one-shot; see entranceDone
                   }}
                 >
                   <span
@@ -697,7 +720,8 @@ export default function ScenarioCanvas({
                   top: n.cy - 24,
                   touchAction: "none",
                   zIndex: selected ? 2 : 1,
-                  animation: enter ? `fadeUp .3s var(--ease-out) ${delay} both` : undefined,
+                  opacity: matchingNodeIds && !matchingNodeIds.has(String(n.id)) && !selected ? 0.3 : 1,
+                  animation: enter && !matchingNodeIds ? `fadeUp .3s var(--ease-out) ${delay} both` : undefined,
                 }}
               >
                 {/* Selection scale lives here, not on the wrapper — the entrance
@@ -715,7 +739,7 @@ export default function ScenarioCanvas({
                       textShadow: "0 1px 2px rgba(0,0,0,.3)",
                     }}
                   >
-                    {n.glyph}
+                    <SoftwareLogo app={n.app} fallback={n.glyph} size={24} />
                   </span>
                   {n.hasFilter && (
                     <span aria-hidden="true" title={n.filterName || "Filter"} className="absolute -right-[3px] -top-[3px] size-[10px] rounded-full border-2 border-plane" style={{ background: "var(--warn)" }} />

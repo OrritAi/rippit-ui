@@ -1,4 +1,5 @@
-import { appColor, appGlyph, onColorGradient } from "@/lib/apps";
+import { SoftwareLogo } from "@/components/shared/SoftwareLogo";
+import { appColor, onColorGradient } from "@/lib/apps";
 
 /*
  * App identity tile — the only chrome that carries colour. White glyph on
@@ -37,7 +38,7 @@ export function AppPuck({
         textShadow: "0 1px 2px rgba(0,0,0,.3)",
       }}
     >
-      {glyph ?? appGlyph(app)}
+      {glyph ?? <SoftwareLogo app={app} size={Math.round(size * 0.6)} />}
     </span>
   );
 }

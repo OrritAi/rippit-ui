@@ -531,6 +531,7 @@ export interface ModuleDetail {
 }
 
 export interface ScenarioSummary {
+  historyWarning?: string;
   name: string;
   totalModules: number;
   appsUsed: string[];
@@ -1092,4 +1093,98 @@ export function fetchGraph(keys: { source: ProviderId; refId: string }[] = []): 
     ? `?workflows=${encodeURIComponent(keys.map((k) => `${k.source}:${k.refId}`).join(","))}`
     : "";
   return apiFetch<GraphData>(`/graph${qs}`);
+}
+
+/* ─── Funnels ──────────────────────────────────────────────────────────── */
+
+export interface FunnelSummary {
+  id: string;
+  name: string;
+  description?: string | null;
+  primaryConnectionId?: string | null;
+  accountLabel?: string | null;
+  reviewState: "draft" | "needs_review" | "reviewed";
+  revision: number;
+  reviewedAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface FunnelStage {
+  id: string;
+  kind: "entry" | "page" | "decision" | "outcome" | "milestone";
+  displayName: string;
+  purpose?: string | null;
+  displayOrder: number;
+  origin: "captured" | "manual" | "suggested";
+  meta: Record<string, unknown>;
+}
+
+export interface FunnelAttachment {
+  id: string;
+  stageId?: string | null;
+  targetKind: "workflow" | "step" | "asset";
+  connectionId?: string | null;
+  workflowExternalId?: string | null;
+  nodeId?: string | null;
+  assetKind?: string | null;
+  assetValue?: string | null;
+  relationship: string;
+  origin: string;
+  label?: string | null;
+  meta: Record<string, unknown>;
+}
+
+export interface FunnelRelationship {
+  id: string;
+  fromStageId?: string | null;
+  toStageId?: string | null;
+  kind: string;
+  label?: string | null;
+  conditionText?: string | null;
+  origin: string;
+  validity: "current" | "stale" | "unresolved" | "source_deleted";
+}
+
+export interface FunnelWorkflowSummary {
+  connectionId: string;
+  workflowExternalId: string;
+  name?: string | null;
+  status?: string | null;
+  isActive?: boolean | null;
+  captureState?: string | null;
+}
+
+export type CoverageState = { state: "captured" | "partial" | "not-captured"; reason?: string };
+
+export interface FunnelGraph {
+  schemaVersion: 1;
+  funnel: FunnelSummary;
+  stages: FunnelStage[];
+  relationships: FunnelRelationship[];
+  attachments: FunnelAttachment[];
+  workflowSummaries: FunnelWorkflowSummary[];
+  evidence: { id: string; stageId?: string | null; method: string; coverage: string; reasonText?: string | null }[];
+  coverage: Record<string, CoverageState>;
+}
+
+export function fetchFunnels(q?: string): Promise<{ funnels: FunnelSummary[] }> {
+  return apiFetch(`/funnels${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+}
+
+export function createFunnel(name: string, primaryConnectionId?: string): Promise<FunnelSummary> {
+  return apiPost(`/funnels`, { name, primaryConnectionId });
+}
+
+export function fetchFunnelGraph(id: string): Promise<FunnelGraph> {
+  return apiFetch(`/funnels/${id}/graph`);
+}
+
+export function addFunnelStage(id: string, stage: {
+  kind?: string; displayName: string; purpose?: string; displayOrder?: number;
+}): Promise<FunnelStage> {
+  return apiPost(`/funnels/${id}/stages`, stage);
+}
+
+export function reviewFunnel(id: string, expectedRevision: number): Promise<FunnelSummary> {
+  return apiPost(`/funnels/${id}/review`, { expectedRevision });
 }

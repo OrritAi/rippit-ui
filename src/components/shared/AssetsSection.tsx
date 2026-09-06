@@ -85,7 +85,7 @@ export function AssetsSection({
               title="Dependencies — every workflow and step using this asset"
               className="inline-flex flex-none cursor-pointer items-center gap-[3px] text-[11px] text-t2 transition-colors hover:text-t1"
             >
-              <Network aria-hidden="true" className="size-[10px]" /> uses
+              <Network aria-hidden="true" className="size-[10px]" /> Dependencies
             </button>
           ) : (
             <Link
@@ -93,7 +93,7 @@ export function AssetsSection({
               title="Dependencies — every workflow and step using this asset"
               className="inline-flex flex-none items-center gap-[3px] text-[11px] text-t2 transition-colors hover:text-t1"
             >
-              <Network aria-hidden="true" className="size-[10px]" /> uses
+              <Network aria-hidden="true" className="size-[10px]" /> Dependencies
             </Link>
           );
           return (

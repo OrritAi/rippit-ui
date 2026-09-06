@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   Link2,
   Moon,
+  GitBranch,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
@@ -69,6 +70,7 @@ export function IconRail() {
   const items: RailItem[] = [
     { id: "dashboard", href: "/dashboard", icon: LayoutDashboard, label: "Dashboard", match: (p) => p.startsWith("/dashboard") },
     { id: "canvas", href: "/w", icon: Workflow, label: "Workflows", match: (p) => p === "/w" || p.startsWith("/w/") },
+    { id: "funnels", href: "/funnels", icon: GitBranch, label: "Funnels", match: (p) => p.startsWith("/funnels") },
     { id: "map", href: "/map", icon: Network, label: "System map", match: (p) => p.startsWith("/map") },
     { id: "health", href: "/health", icon: HeartPulse, label: "Health", match: (p) => p.startsWith("/health") },
     { id: "assets", href: "/assets", icon: Link2, label: "Assets", match: (p) => p.startsWith("/assets") },

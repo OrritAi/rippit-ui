@@ -46,23 +46,26 @@ const SEARCH_DEBOUNCE_MS = 200;
 const SEARCH_MIN_CHARS = 2;
 
 function useServerSearch(query: string, enabled: boolean) {
-  const [result, setResult] = useState<{ q: string; hits: SearchHit[] } | null>(null);
+  const [result, setResult] = useState<{ q: string; hits: SearchHit[]; failed?: boolean } | null>(null);
   const q = query.trim();
   useEffect(() => {
     if (!enabled || q.length < SEARCH_MIN_CHARS) return;
     let live = true;
     const t = setTimeout(() => {
       searchEstate(q, 15)
+        // A failed request is not "no results" — carry the query and a failed
+        // flag so the UI can offer a retry instead of implying an empty estate.
         .then((r) => live && setResult({ q, hits: r.results }))
-        .catch(() => live && setResult({ q, hits: [] }));
+        .catch(() => live && setResult({ q, hits: [], failed: true }));
     }, SEARCH_DEBOUNCE_MS);
     return () => {
       live = false;
       clearTimeout(t);
     };
   }, [q, enabled]);
-  if (!enabled || q.length < SEARCH_MIN_CHARS) return { hits: [], pending: false };
-  return { hits: result?.q === q ? result.hits : [], pending: result?.q !== q };
+  if (!enabled || q.length < SEARCH_MIN_CHARS) return { hits: [], pending: false, failed: false };
+  const current = result?.q === q ? result : null;
+  return { hits: current?.hits ?? [], pending: !current, failed: !!current?.failed };
 }
 
 function hitHref(h: SearchHit): string {
@@ -102,7 +105,7 @@ export function CommandPalette() {
   const index = useWorkflowIndex();
   const { resolvedTheme, setTheme } = useTheme();
   const [query, setQuery] = useState("");
-  const { hits, pending } = useServerSearch(query, isOpen);
+  const { hits, pending, failed } = useServerSearch(query, isOpen);
   const { tags } = useTags();
   const recent = useRecentWorkflows();
   const [views, setViews] = useState<SavedView[]>([]);
@@ -144,7 +147,13 @@ export function CommandPalette() {
         <Kbd>esc</Kbd>
       </div>
       <CommandList className="max-h-[330px] p-1.5">
-        <CommandEmpty>{pending ? "Searching…" : "No results — try a workflow, step, asset, or page."}</CommandEmpty>
+        <CommandEmpty>
+          {pending
+            ? "Searching…"
+            : failed
+              ? "Search didn’t respond. Check your connection and try again."
+              : "No results — try a workflow, step, asset, or page."}
+        </CommandEmpty>
 
         {scope?.actions && scope.actions.length > 0 && (
           <CommandGroup heading="Actions">
@@ -176,7 +185,10 @@ export function CommandPalette() {
                   <CommandItem key={`${h.type}:${h.provider}:${h.workflowExternalId}:${h.nodeId ?? ""}:${h.value ?? ""}`} value={`${query} ${h.type} ${h.label ?? ""} ${h.workflowName ?? ""}`} className={ITEM} onSelect={() => go(hitHref(h))}>
                     <IconBox icon={h.type === "asset" ? Box : Search} />
                     <span className="truncate">{h.label}</span>
-                    <span className="truncate text-[11.5px] text-t3">{h.type === "asset" ? `${kindLabel(h.kind ?? "")} · ${h.workflowName ?? ""}` : `${h.workflowName ?? ""}${h.secondary ? ` · ${h.secondary}` : ""}`}</span>
+                    <span className="min-w-0 flex-1 text-[11.5px] text-t2">
+                      <span className="block truncate font-medium">{h.workflowName || "Workflow name unavailable"}</span>
+                      <span className="block truncate text-t3">{[h.provider === "make" ? "Make" : h.provider === "ghl" ? "GoHighLevel" : null, h.connectionLabel, h.type === "asset" ? kindLabel(h.kind ?? "") : h.ordinal ? `Step ${h.ordinal}` : h.secondary].filter(Boolean).join(" · ")}</span>
+                    </span>
                     <CommandShortcut className="font-mono text-[9.5px]">{h.type === "asset" ? "asset" : `${connector?.nouns.step ?? "step"}${h.ordinal ? ` ${h.ordinal}` : ""}`}</CommandShortcut>
                   </CommandItem>
                 );
