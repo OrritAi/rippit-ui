@@ -5,15 +5,14 @@ import { useSearchParams, notFound } from "next/navigation";
 import Link from "next/link";
 import { Activity, HeartPulse, History, Info, MessageSquare, NotebookPen } from "lucide-react";
 import { fetchExecutions, fetchComments, fetchWorkflowChanges, markWorkflowSeen, setWatch } from "@/app/lib/api";
-import type { ExecutionsResponse, Issue, NodeId, Tag, WorkflowChanges } from "@/app/lib/api";
+import type { Connection, ExecutionsResponse, Issue, ModuleInfo, NodeId, Tag, WorkflowChanges } from "@/app/lib/api";
 import { getConnector, isProviderId } from "@/lib/connectors";
 import type { WorkflowData } from "@/lib/connectors/types";
-import { parsePortalId, withPortals, WorkflowRef } from "@/lib/portals";
+import { parsePortalId, parseLinkedNodeId, withPortals, expandLinked, WorkflowRef, type LinkedExpansion } from "@/lib/portals";
 import { useConnections, useWorkflowIndex } from "@/components/app/ConnectionsProvider";
 import { useAuth } from "@/components/app/AuthProvider";
 import { usePaletteScope } from "@/components/palette/palette-context";
 import { WorkflowCanvas } from "@/components/canvas/WorkflowCanvas";
-import { LinkedWorkflowPanel } from "@/components/canvas/LinkedWorkflowPanel";
 import { ActionBar, type DockTool } from "@/components/canvas/ActionBar";
 import { ConnectedChips } from "@/components/canvas/ConnectedChips";
 import { CaptureNotice } from "@/components/shared/CaptureBadge";
@@ -55,7 +54,10 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
 
   // The single dock occupant.
   const [tool, setTool] = useState<DockTool | null>(null);
-  const [expandedWorkflow, setExpandedWorkflow] = useState<WorkflowRef | null>(null);
+  // Portals expanded inline on the canvas (keyed by portal id), plus the linked
+  // workflow summaries loaded for them.
+  const [expandedPortals, setExpandedPortals] = useState<Set<string>>(new Set());
+  const [linkedSummaries, setLinkedSummaries] = useState<Record<string, { modules: ModuleInfo[]; connections: Connection[] }>>({});
   const [selectedId, setSelectedId] = useState<NodeId | null>(null);
   const [nodeDetail, setNodeDetail] = useState<unknown | null>(null);
   const [nodeError, setNodeError] = useState(false);
@@ -88,6 +90,20 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider, id, reloadKey]);
+
+  // Load the linked workflow behind each expanded portal (once) for inline
+  // rendering; a failed load quietly collapses that portal.
+  useEffect(() => {
+    for (const pid of expandedPortals) {
+      if (linkedSummaries[pid]) continue;
+      const ref = parsePortalId(pid);
+      if (!ref) continue;
+      getConnector(ref.source)
+        .loadWorkflow(ref.refId)
+        .then((wd) => setLinkedSummaries((m) => ({ ...m, [pid]: wd.summary })))
+        .catch(() => setExpandedPortals((s) => { const n = new Set(s); n.delete(pid); return n; }));
+    }
+  }, [expandedPortals, linkedSummaries]);
 
   useEffect(() => {
     if (myCard) setWfTags(myCard.tags ?? []);
@@ -194,19 +210,30 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
     if (!data) return null;
     const base = withPortals(data.summary, linkMap, self);
     const hasComments = Object.keys(commentCounts).length > 0;
-    if (runtimeIssueByNode.size === 0 && changedNodeIds.size === 0 && !hasComments) return base;
-    return {
-      ...base,
-      modules: base.modules.map((m) => {
-        const extra = runtimeIssueByNode.get(String(m.id));
-        const changed = changedNodeIds.has(String(m.id));
-        const cc = commentCounts[String(m.id)];
-        if (!extra && !changed && !cc) return m;
-        const existing = (m.issues ?? []).filter((i) => i.code !== "last-run-failed");
-        return { ...m, ...(changed ? { changed: true } : {}), ...(cc ? { commentCount: cc } : {}), ...(extra ? { issues: [extra, ...existing] } : {}) };
-      }),
-    };
-  }, [data, linkMap, self, runtimeIssueByNode, changedNodeIds, commentCounts]);
+    const overlaid =
+      runtimeIssueByNode.size === 0 && changedNodeIds.size === 0 && !hasComments
+        ? base
+        : {
+            ...base,
+            modules: base.modules.map((m) => {
+              const extra = runtimeIssueByNode.get(String(m.id));
+              const changed = changedNodeIds.has(String(m.id));
+              const cc = commentCounts[String(m.id)];
+              if (!extra && !changed && !cc) return m;
+              const existing = (m.issues ?? []).filter((i) => i.code !== "last-run-failed");
+              return { ...m, ...(changed ? { changed: true } : {}), ...(cc ? { commentCount: cc } : {}), ...(extra ? { issues: [extra, ...existing] } : {}) };
+            }),
+          };
+    // Append the steps of any inline-expanded linked workflow.
+    const expansions = [...expandedPortals]
+      .map((pid) => {
+        const ref = parsePortalId(pid);
+        const summary = linkedSummaries[pid];
+        return ref && summary ? { ref, modules: summary.modules, connections: summary.connections } : null;
+      })
+      .filter((e): e is LinkedExpansion => e !== null);
+    return expandLinked(overlaid, expansions);
+  }, [data, linkMap, self, runtimeIssueByNode, changedNodeIds, commentCounts, expandedPortals, linkedSummaries]);
 
   // Per-step run line: only what we actually know (the failing module).
   const runStats = useMemo(() => {
@@ -233,30 +260,40 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
     (nodeId: NodeId) => {
       const portal = parsePortalId(nodeId);
       if (portal) {
+        // Toggle inline expansion of the linked workflow on the canvas.
+        const pid = String(nodeId);
         setTool(null);
         setSelectedId(null);
         setStepParam(null);
-        setExpandedWorkflow(portal);
+        setExpandedPortals((cur) => {
+          const next = new Set(cur);
+          if (next.has(pid)) next.delete(pid);
+          else next.add(pid);
+          return next;
+        });
         return;
       }
-      setExpandedWorkflow(null);
       setTool(null);
       setSelectedId(nodeId);
       setStepParam(nodeId);
       setNodeLoading(true);
       setNodeDetail(null);
       setNodeError(false);
-      connector
-        .fetchNodeDetail(id, nodeId)
+      // A namespaced id belongs to an inline-expanded linked workflow; a bare id
+      // is this workflow's own step.
+      const linked = parseLinkedNodeId(nodeId);
+      const targetRef = linked?.ref ?? self;
+      const targetNode = linked?.nodeId ?? String(nodeId);
+      getConnector(targetRef.source)
+        .fetchNodeDetail(targetRef.refId, targetNode)
         .then(setNodeDetail)
         .catch(() => setNodeError(true))
         .finally(() => setNodeLoading(false));
     },
-    [connector, id, setStepParam]
+    [self, setStepParam]
   );
 
   const closeNode = useCallback(() => {
-    setExpandedWorkflow(null);
     setSelectedId(null);
     setNodeDetail(null);
     setNodeError(false);
@@ -266,7 +303,6 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
 
   const openTool = useCallback(
     (t: DockTool) => {
-      setExpandedWorkflow(null);
       setTool((cur) => {
         const next = cur === t ? null : t;
         if (next) {
@@ -363,6 +399,9 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
     .filter(Boolean)
     .join(" · ");
   const selectedModule = selectedId != null ? (canvasData ?? summary).modules.find((m) => String(m.id) === String(selectedId)) ?? null : null;
+  // A selected linked node carries its own provider/workflow; host nodes use this page's.
+  const selectedRef = selectedId != null ? parseLinkedNodeId(selectedId)?.ref ?? self : null;
+  const selectedIsHost = !!selectedRef && selectedRef.source === self.source && String(selectedRef.refId) === String(self.refId);
 
   const linkedSetHref = (() => {
     if (!linkMap) return null;
@@ -378,7 +417,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
   const mapHref = `/map?focus=${encodeURIComponent(`${provider}:${id}`)}`;
   const folderPath = indexEntry?.groupPath?.slice(-1)[0] ?? null;
   const needsReauth = connection?.status === "needs_reauth";
-  const dockOpen = selectedId != null || tool != null || expandedWorkflow != null;
+  const dockOpen = selectedId != null || tool != null;
 
   return (
     <div className="flex h-full min-w-0 flex-col">
@@ -450,7 +489,6 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
             onNodeClick={selectNode}
             live={live && provider === "make"}
             dockOpen={dockOpen}
-            dockWidth={expandedWorkflow ? 560 : undefined}
             runStats={runStats}
             onZoomChange={setZoom}
           />
@@ -474,16 +512,15 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
           )}
 
           {/* ---- the dock: exactly one occupant ---- */}
-          {expandedWorkflow && <LinkedWorkflowPanel key={`${expandedWorkflow.source}:${expandedWorkflow.refId}`} target={expandedWorkflow} onClose={() => setExpandedWorkflow(null)} />}
           {selectedModule && (
             <NodeInspector
-              provider={provider}
-              workflowId={id}
+              provider={selectedRef?.source ?? provider}
+              workflowId={selectedRef?.refId ?? id}
               module={selectedModule}
               detail={nodeDetail}
               loading={nodeLoading}
               error={nodeError}
-              executions={provider === "make" ? runs : null}
+              executions={selectedIsHost && provider === "make" ? runs : null}
               nativeUrl={nativeUrl}
               watching={!!wfMeta?.watching}
               onToggleWatch={toggleWatch}

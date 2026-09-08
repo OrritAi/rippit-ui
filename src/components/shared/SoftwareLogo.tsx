@@ -5,6 +5,7 @@ import { appGlyph } from "@/lib/apps";
 
 const LOGOS: Record<string, string> = {
   make: "make", meta: "meta", facebook: "meta", "facebook-conversions-api": "meta",
+  ghl: "highlevel", highlevel: "highlevel", leadconnector: "highlevel", gohighlevel: "highlevel",
   "google-sheets": "googlesheets", "googleads": "googleads", "google-ads": "googleads",
   "google-calendar": "googlecalendar", "google-forms": "googleforms", gmail: "gmail", "google-email": "gmail",
 };
@@ -30,6 +31,7 @@ export function SoftwareLogo({ app, fallback, size = 22 }: { app: string; fallba
       width={size}
       height={size}
       className="inline-block flex-none object-contain"
+      style={{ filter: "brightness(0) invert(1)" }}
       onError={() => setBroken(true)}
     />
   );

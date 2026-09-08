@@ -362,7 +362,7 @@ function ProviderSection({ provider, count, children }: { provider: ProviderId; 
       className="group/reorder relative mb-2.5 rounded-row bg-sidebar"
     >
       <div className="flex h-[24px] items-center gap-[6px] border-b border-line2 px-1.5">
-        <AppPuck app={connector.id} color={connector.brandColor} glyph={connector.glyph} size={14} />
+        <AppPuck app={connector.id} color={connector.brandColor} size={14} />
         <span className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-wide text-t3">{connector.label}</span>
         <span className="tabular font-mono text-[10px] text-t3">{count}</span>
         <Grip controls={controls} label={`Drag to reorder the ${connector.label} section`} />
@@ -440,7 +440,7 @@ function ConnectionTree({
           }`}
         >
           <ChevronRight aria-hidden="true" className={`size-[10px] flex-none text-t3 transition-transform duration-[var(--dur-fast)] ease-[var(--ease-out)] ${expanded ? "rotate-90" : ""}`} />
-          <AppPuck app={connector.id} color={connector.brandColor} glyph={connector.glyph} size={15} />
+          <AppPuck app={connector.id} color={connector.brandColor} size={15} />
           <span
             className="min-w-0 flex-1 truncate text-[11px] font-semibold text-t1"
             title={`${connector.label} · ${connection.displayName}${connection.accountName && connection.label ? ` (${connection.accountName})` : ""} · id ${connection.externalId}`}

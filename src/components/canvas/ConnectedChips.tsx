@@ -52,7 +52,7 @@ export function ConnectedChips({ linkMap, self, className = "" }: { linkMap: Lin
               color: t.dead ? "var(--err-text)" : "var(--warn-text)",
             }}
           >
-            <AppPuck app={conn.id} color={conn.brandColor} glyph={conn.glyph} size={15} />
+            <AppPuck app={conn.id} color={conn.brandColor} size={15} />
             <span className="text-t3">{conn.shortLabel} :</span>
             <span className="max-w-[180px] truncate">{t.name}</span>
             <span aria-hidden="true">{t.direction === "out" ? "→" : "←"}</span>

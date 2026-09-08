@@ -556,6 +556,40 @@ export interface AssetRef {
   node_id?: string | null;
   provider?: ProviderId;
   meta?: Record<string, unknown>;
+  /** Captured survey builder structure, when this asset is a GHL survey. */
+  structure?: SurveyStructure;
+}
+
+/** A GHL survey's internal structure: slides → questions → options, with the
+ * per-option conditional logic (disqualify / skip) that decides who advances. */
+export interface SurveyStructure {
+  surveyId: string | null;
+  name: string | null;
+  slides: SurveySlide[];
+  questionCount: number;
+  hasLogic: boolean;
+  parsed: boolean;
+  raw?: unknown;
+}
+export interface SurveySlide {
+  id: string;
+  order: number;
+  title: string;
+  questions: SurveyQuestion[];
+}
+export interface SurveyQuestion {
+  id: string;
+  type: string;
+  label: string;
+  required: boolean;
+  hidden: boolean;
+  options: SurveyOption[];
+  hasLogic: boolean;
+  disqualifies: boolean;
+}
+export interface SurveyOption {
+  label: string;
+  logic?: { action: string; target?: string };
 }
 
 /** One row of the assets registry (GET /assets). */

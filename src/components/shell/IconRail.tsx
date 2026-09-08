@@ -6,15 +6,9 @@ import { useTheme } from "next-themes";
 import { startTransition } from "react";
 import { motion } from "framer-motion";
 import {
-  AtSign,
-  Bell,
   HeartPulse,
-  Inbox,
-  LayoutDashboard,
   Link2,
   Moon,
-  GitBranch,
-  Network,
   PanelLeftClose,
   PanelLeftOpen,
   Search,
@@ -22,10 +16,9 @@ import {
   Workflow,
   type LucideIcon,
 } from "lucide-react";
-import { IconBtn, CornerBadge } from "./IconBtn";
+import { IconBtn } from "./IconBtn";
 import { AvatarMenu } from "./AvatarMenu";
 import { useShell } from "./shell-context";
-import { useBadges } from "./useBadges";
 import { panelFor, usePanelAvailable } from "./SidePanel";
 import { usePalette } from "@/components/palette/palette-context";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -49,13 +42,12 @@ interface RailItem {
   icon: LucideIcon;
   label: string;
   match: (path: string) => boolean;
-  badge?: number;
 }
 
 /*
- * 52px icon rail — the app's primary navigation. Dashboard sits first (home),
- * then the handoff order. Badges: Needs you (broken + changed), Notifications (unread),
- * Mentions (open threads that mention you).
+ * 52px icon rail — the app's primary navigation, kept deliberately small:
+ * Workflows (the browse home), Health, and Assets. The home diamond returns to
+ * the dashboard landing.
  */
 export function IconRail() {
   const pathname = usePathname();
@@ -63,24 +55,17 @@ export function IconRail() {
   const { railOpen, toggleRail, setRailOpen } = useShell();
   const palette = usePalette();
   const { resolvedTheme, setTheme } = useTheme();
-  const badges = useBadges();
   const mounted = useHydrated();
   const available = usePanelAvailable();
 
   const items: RailItem[] = [
-    { id: "dashboard", href: "/dashboard", icon: LayoutDashboard, label: "Dashboard", match: (p) => p.startsWith("/dashboard") },
     { id: "canvas", href: "/w", icon: Workflow, label: "Workflows", match: (p) => p === "/w" || p.startsWith("/w/") },
-    { id: "funnels", href: "/funnels", icon: GitBranch, label: "Funnels", match: (p) => p.startsWith("/funnels") },
-    { id: "map", href: "/map", icon: Network, label: "System map", match: (p) => p.startsWith("/map") },
     { id: "health", href: "/health", icon: HeartPulse, label: "Health", match: (p) => p.startsWith("/health") },
     { id: "assets", href: "/assets", icon: Link2, label: "Assets", match: (p) => p.startsWith("/assets") },
-    { id: "inbox", href: "/inbox", icon: Inbox, label: "Needs you", match: (p) => p.startsWith("/inbox"), badge: badges.needsYou },
-    { id: "activity", href: "/activity", icon: Bell, label: "Notifications", match: (p) => p.startsWith("/activity"), badge: badges.unread },
-    { id: "mentions", href: "/mentions", icon: AtSign, label: "Mentions & comments", match: (p) => p.startsWith("/mentions"), badge: badges.mentions },
   ];
 
-  // Views whose side panel is the way in (workflows, needs-you, notifications,
-  // mentions) open it as you arrive; dashboard / map / assets leave it as is.
+  // Workflows opens its browser panel as you arrive; health / assets leave the
+  // side panel as it is.
   const go = (href: string) => {
     if (panelFor(href).autoOpen) setRailOpen(true);
     startTransition(() => router.push(href));
@@ -111,7 +96,7 @@ export function IconRail() {
                 className="pointer-events-none absolute -left-[9px] top-1/2 h-[18px] w-[2px] -translate-y-1/2 rounded-full bg-t1"
               />
             )}
-            <Tip label={it.badge ? `${it.label} · ${it.badge}` : it.label}>
+            <Tip label={it.label}>
               <IconBtn
                 icon={it.icon}
                 label={it.label}
@@ -124,8 +109,6 @@ export function IconRail() {
                 onClick={() => go(it.href)}
               />
             </Tip>
-            <CornerBadge value={it.badge && it.badge > 99 ? "99+" : it.badge} />
-            {it.badge ? <span className="sr-only">{it.badge} items</span> : null}
           </span>
         );
       })}

@@ -147,3 +147,58 @@ export function withPortals(
 
   return { modules, connections };
 }
+
+/* ── Inline linked-workflow expansion ─────────────────────────────────────────
+ * When a portal is expanded on the canvas, the linked workflow's steps are
+ * appended inline (flowing off the portal node) rather than opening a popup.
+ * Host nodes keep their bare ids; linked nodes are namespaced so selection and
+ * styling can tell them apart. */
+
+type CanvasSummary = { modules: ModuleInfo[]; connections: Connection[] };
+
+export function linkedNodePrefix(ref: WorkflowRef): string {
+  return `linked:${ref.source}:${ref.refId}:`;
+}
+
+/** Parse a "linked:{source}:{refId}:{nodeId}" id back to its parts. */
+export function parseLinkedNodeId(id: NodeId): { ref: WorkflowRef; nodeId: string } | null {
+  const s = String(id);
+  if (!s.startsWith("linked:")) return null;
+  const rest = s.slice("linked:".length);
+  const i = rest.indexOf(":");
+  if (i < 0) return null;
+  const source = rest.slice(0, i);
+  if (!isProviderId(source)) return null;
+  const afterSource = rest.slice(i + 1);
+  const j = afterSource.indexOf(":");
+  if (j < 0) return null;
+  return { ref: { source, refId: afterSource.slice(0, j) }, nodeId: afterSource.slice(j + 1) };
+}
+
+export interface LinkedExpansion {
+  ref: WorkflowRef;
+  modules: ModuleInfo[];
+  connections: Connection[];
+}
+
+/** Append each expanded linked workflow's steps to the base graph, connected
+ * from its portal node so they flow inline. Pure — returns a new summary. */
+export function expandLinked(base: CanvasSummary, expansions: LinkedExpansion[]): CanvasSummary {
+  if (expansions.length === 0) return base;
+  const modules = [...base.modules];
+  const connections = [...base.connections];
+  for (const ex of expansions) {
+    const prefix = linkedNodePrefix(ex.ref);
+    const ns = (nid: NodeId) => `${prefix}${nid}`;
+    for (const m of ex.modules) modules.push({ ...m, id: ns(m.id), source: ex.ref.source });
+    for (const c of ex.connections) connections.push({ ...c, from: ns(c.from), to: ns(c.to) });
+    // Root(s) of the linked graph hang off the portal node.
+    const incoming = new Set(ex.connections.map((c) => String(c.to)));
+    const roots = ex.modules.filter((m) => !incoming.has(String(m.id)));
+    const pid = portalId(ex.ref);
+    for (const r of roots.length ? roots : ex.modules.slice(0, 1)) {
+      connections.push({ from: pid, to: ns(r.id), kind: "subflow", label: "opens" });
+    }
+  }
+  return { ...base, modules, connections };
+}
