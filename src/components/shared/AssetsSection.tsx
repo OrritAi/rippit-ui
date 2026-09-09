@@ -37,6 +37,17 @@ const KIND_LABELS: Record<string, string> = {
   notion_database: "Notion database",
   notion_page: "Notion page",
   slack_channel: "Slack channel",
+  cf_tag: "ClickFunnels tag",
+  cf_email_template: "ClickFunnels email template",
+  cf_course: "ClickFunnels course",
+  cf_community_space: "ClickFunnels community space",
+  cf_pipeline: "ClickFunnels pipeline",
+  cf_pipeline_stage: "ClickFunnels stage",
+  cf_workflow: "ClickFunnels workflow",
+  cf_sender: "ClickFunnels sender",
+  cf_page: "ClickFunnels page",
+  cf_funnel: "ClickFunnels funnel",
+  cf_product: "ClickFunnels product",
 };
 
 export function kindLabel(kind: string): string {

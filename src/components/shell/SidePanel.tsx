@@ -27,8 +27,8 @@ export interface SidePanelDef {
 }
 
 export const SIDE_PANELS: SidePanelDef[] = [
-  // Dashboard and the system map are full-bleed: no side panel at all.
-  { id: "none", title: "", match: (p) => p.startsWith("/dashboard") || p.startsWith("/map") },
+  // Dashboard, the system map and Martech are full-bleed: no side panel at all.
+  { id: "none", title: "", match: (p) => p.startsWith("/dashboard") || p.startsWith("/map") || p.startsWith("/martech") },
   { id: "inbox", title: "Needs you", match: (p) => p.startsWith("/inbox"), Component: InboxPanel, useCount: useInboxCount, autoOpen: true },
   { id: "activity", title: "Notifications", match: (p) => p.startsWith("/activity"), Component: NotificationsPanel, useCount: useNotificationsCount, autoOpen: true },
   { id: "mentions", title: "Mentions", match: (p) => p.startsWith("/mentions"), Component: MentionsPanel, useCount: useMentionsCount, autoOpen: true },

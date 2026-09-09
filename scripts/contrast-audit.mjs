@@ -55,6 +55,16 @@ const CHECKS = [
   ["light --ok graphic on --bg (non-text)", "#16a34a", LIGHT_BG, 3],
   ["light --warn graphic on --bg (non-text)", "#d97706", LIGHT_BG, 3],
   ["light --err graphic on --bg (non-text)", "#dc2626", LIGHT_BG, 3],
+  // Globe canvas palette (src/components/dashboard/globe/palette.ts) — the
+  // canvas can't read tokens, so these literals are what it actually paints.
+  ["globe dark ghl on --bg (non-text)", "#4cc3fa", DARK_BG, 3],
+  ["globe dark make on --bg (non-text)", "#cf9bfc", DARK_BG, 3],
+  ["globe dark off on --bg (non-text)", "#8b8b94", DARK_BG, 3],
+  ["globe dark label on --bg", "#c5c5cc", DARK_BG, 4.5],
+  ["globe light ghl on --bg (non-text)", "#0369a1", LIGHT_BG, 3],
+  ["globe light make on --bg (non-text)", "#7e22ce", LIGHT_BG, 3],
+  ["globe light off on --bg (non-text)", "#6b6b74", LIGHT_BG, 3],
+  ["globe light label on --bg", "#3f3f46", LIGHT_BG, 4.5],
 ];
 
 let failed = 0;

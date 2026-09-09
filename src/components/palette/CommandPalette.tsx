@@ -12,6 +12,7 @@ import {
   Box,
   Clock3,
   Crosshair,
+  Funnel,
   Inbox,
   LayoutDashboard,
   Link2,
@@ -26,7 +27,7 @@ import {
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command";
 import { useConnections, useWorkflowIndex } from "@/components/app/ConnectionsProvider";
 import { usePalette } from "./palette-context";
-import { getConnector } from "@/lib/connectors";
+import { CONNECTORS, getConnector, isProviderId } from "@/lib/connectors";
 import { workflowHref } from "@/lib/portals";
 import { fetchViews, SavedView, searchEstate, SearchHit } from "@/app/lib/api";
 import { kindLabel, assetHref } from "@/components/shared/AssetsSection";
@@ -80,6 +81,7 @@ const PAGES: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard", label: "Go to dashboard", icon: LayoutDashboard },
   { href: "/w", label: "Workflows", icon: Workflow },
   { href: "/map", label: "System map", icon: Network },
+  { href: "/martech", label: "Martech", icon: Funnel },
   { href: "/assets", label: "Assets", icon: Link2 },
   { href: "/inbox", label: "Needs you", icon: Inbox },
   { href: "/activity", label: "Open notifications", icon: Bell },
@@ -187,7 +189,7 @@ export function CommandPalette() {
                     <span className="truncate">{h.label}</span>
                     <span className="min-w-0 flex-1 text-[11.5px] text-t2">
                       <span className="block truncate font-medium">{h.workflowName || "Workflow name unavailable"}</span>
-                      <span className="block truncate text-t3">{[h.provider === "make" ? "Make" : h.provider === "ghl" ? "GoHighLevel" : null, h.connectionLabel, h.type === "asset" ? kindLabel(h.kind ?? "") : h.ordinal ? `Step ${h.ordinal}` : h.secondary].filter(Boolean).join(" · ")}</span>
+                      <span className="block truncate text-t3">{[h.provider && isProviderId(h.provider) ? CONNECTORS[h.provider].label : null, h.connectionLabel, h.type === "asset" ? kindLabel(h.kind ?? "") : h.ordinal ? `Step ${h.ordinal}` : h.secondary].filter(Boolean).join(" · ")}</span>
                     </span>
                     <CommandShortcut className="font-mono text-[9.5px]">{h.type === "asset" ? "asset" : `${connector?.nouns.step ?? "step"}${h.ordinal ? ` ${h.ordinal}` : ""}`}</CommandShortcut>
                   </CommandItem>

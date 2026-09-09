@@ -12,6 +12,11 @@ export function kindIcon(kind: string): LucideIcon {
   if (kind === "ghl_tag") return Tag;
   if (kind === "ghl_workflow") return Workflow;
   if (kind === "ghl_template" || kind === "ghl_campaign") return MessageSquare;
+  if (kind.startsWith("cf_pipeline")) return GitBranch;
+  if (kind === "cf_tag") return Tag;
+  if (kind === "cf_workflow") return Workflow;
+  if (kind === "cf_email_template" || kind === "cf_sender") return MessageSquare;
+  if (kind === "cf_page" || kind === "cf_funnel") return FileText;
   if (kind.startsWith("airtable") || kind.startsWith("notion")) return FileSpreadsheet;
   return Link2;
 }
@@ -21,6 +26,7 @@ export function openLabel(kind: string): string {
   if (kind.startsWith("google_doc")) return "Open in Google Docs";
   if (kind.startsWith("google_drive")) return "Open in Google Drive";
   if (kind.startsWith("ghl_")) return "Open in GHL";
+  if (kind.startsWith("cf_")) return "Open in ClickFunnels";
   if (kind.startsWith("airtable")) return "Open in Airtable";
   if (kind.startsWith("notion")) return "Open in Notion";
   if (kind.startsWith("slack")) return "Open in Slack";

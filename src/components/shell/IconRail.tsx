@@ -6,6 +6,7 @@ import { useTheme } from "next-themes";
 import { startTransition } from "react";
 import { motion } from "framer-motion";
 import {
+  Funnel,
   HeartPulse,
   Link2,
   Moon,
@@ -46,8 +47,8 @@ interface RailItem {
 
 /*
  * 52px icon rail — the app's primary navigation, kept deliberately small:
- * Workflows (the browse home), Health, and Assets. The home diamond returns to
- * the dashboard landing.
+ * Workflows (the browse home), Martech (funnel maps), Health, and Assets. The
+ * home diamond returns to the dashboard landing.
  */
 export function IconRail() {
   const pathname = usePathname();
@@ -60,6 +61,7 @@ export function IconRail() {
 
   const items: RailItem[] = [
     { id: "canvas", href: "/w", icon: Workflow, label: "Workflows", match: (p) => p === "/w" || p.startsWith("/w/") },
+    { id: "martech", href: "/martech", icon: Funnel, label: "Martech", match: (p) => p.startsWith("/martech") },
     { id: "health", href: "/health", icon: HeartPulse, label: "Health", match: (p) => p.startsWith("/health") },
     { id: "assets", href: "/assets", icon: Link2, label: "Assets", match: (p) => p.startsWith("/assets") },
   ];

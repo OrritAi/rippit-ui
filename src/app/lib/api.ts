@@ -767,6 +767,26 @@ export function fetchGhlStepDetail(
   return apiFetch(`/workflows/ghl/${workflowId}/nodes/${stepId}`);
 }
 
+/* ─── Any provider ─────────────────────────────────────────────────────── */
+
+/** Canvas summary for any registered provider (the GHL/Make helpers above
+ * predate the generic route shape; new connectors use these). */
+export function fetchWorkflowSummary(
+  provider: ProviderId,
+  workflowId: string,
+  fresh = false
+): Promise<GhlWorkflowSummary> {
+  return apiFetch(`/workflows/${provider}/${encodeURIComponent(workflowId)}/summary${fresh ? "?fresh=true" : ""}`);
+}
+
+export function fetchNodeDetail(
+  provider: ProviderId,
+  workflowId: string,
+  nodeId: string
+): Promise<Record<string, unknown>> {
+  return apiFetch(`/workflows/${provider}/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}`);
+}
+
 /* ─── Connections ──────────────────────────────────────────────────────── */
 
 export interface BackendConnectionRow {
@@ -1129,7 +1149,20 @@ export function fetchGraph(keys: { source: ProviderId; refId: string }[] = []): 
   return apiFetch<GraphData>(`/graph${qs}`);
 }
 
-/* ─── Funnels ──────────────────────────────────────────────────────────── */
+/* ─── Funnels / Martech ────────────────────────────────────────────────
+ * API paths stay `/funnels`; the UI calls the feature Martech. The graph is
+ * schemaVersion 2: the classic stages/attachments/relationships/evidence
+ * arrays plus flat top-level `pages`, `automations`, `decisions`,
+ * `conversions`, `tracking`, `adPlatform`, `unplaced`, `source`. Everything
+ * is evidence-labelled: "configured" (captured from the platform's config)
+ * or "not-captured" (Rippit has nothing for it). Never a runtime claim.
+ */
+
+/** What Rippit can honestly say about a node: captured from configuration,
+ * or not captured at all. There is no third state. */
+export type Evidence = "configured" | "not-captured";
+
+export type FunnelStageRole = "optin" | "application" | "booking" | "confirmation" | "disqualified" | "other";
 
 export interface FunnelSummary {
   id: string;
@@ -1141,6 +1174,22 @@ export interface FunnelSummary {
   revision: number;
   reviewedAt?: string | null;
   updatedAt?: string | null;
+  /** "detected" = built from the platform (GHL funnel directory / workflow
+   *  cluster); "manual" = mapped by an operator. */
+  origin: "detected" | "manual";
+  detectionSource?: "ghl_funnel" | "workflow_cluster" | null;
+  /** Native URL of the funnel in the platform, when known. */
+  sourceUrl?: string | null;
+  pageCount: number;
+  workflowCount: number;
+  /** List-level coverage facets — same vocabulary as the graph's coverage. */
+  coverage: {
+    pages: CoverageState;
+    screenshots: CoverageState;
+    automations: CoverageState;
+  };
+  lastCapturedAt?: string | null;
+  lastDetectedAt?: string | null;
 }
 
 export interface FunnelStage {
@@ -1151,6 +1200,11 @@ export interface FunnelStage {
   displayOrder: number;
   origin: "captured" | "manual" | "suggested";
   meta: Record<string, unknown>;
+  /** Public URL of the stage's default page, when it is a page. */
+  url?: string | null;
+  role?: FunnelStageRole | null;
+  /** GHL funnel step id (stable across re-detects). */
+  sourceExternalId?: string | null;
 }
 
 export interface FunnelAttachment {
@@ -1172,6 +1226,7 @@ export interface FunnelRelationship {
   id: string;
   fromStageId?: string | null;
   toStageId?: string | null;
+  /** "next" | "branches_to" | "redirects_to" | … */
   kind: string;
   label?: string | null;
   conditionText?: string | null;
@@ -1190,15 +1245,182 @@ export interface FunnelWorkflowSummary {
 
 export type CoverageState = { state: "captured" | "partial" | "not-captured"; reason?: string };
 
+/** A form / survey / calendar embedded on a page (or referenced by a
+ * workflow trigger placed on that page). */
+export interface FunnelPageAsset {
+  kind: "form" | "survey" | "calendar";
+  externalId: string;
+  name: string | null;
+  /** Deep link to the asset in the platform (opens in a new tab). */
+  nativeUrl: string | null;
+  /** Registry kind, for the Dependencies link (`assetHref`). Surveys share
+   *  the form registry. */
+  assetKind: "ghl_form" | "ghl_calendar";
+  /** Surveys only: slides / questions / disqualify logic. */
+  surveyStructure?: SurveyStructure | null;
+}
+
+export interface FunnelPageScreenshot {
+  status: "captured" | "pending" | "failed" | "unavailable";
+  /** Signed URL (1h) when `status === "captured"`. */
+  url: string | null;
+  capturedAt: string | null;
+  /** Why there is no image, for failed / unavailable. */
+  reason: string | null;
+}
+
+export interface FunnelPageVariant {
+  pageExternalId: string;
+  name: string;
+  path: string | null;
+  url: string | null;
+  isDefault: boolean;
+}
+
+export interface FunnelPage {
+  id: string;
+  stageId: string;
+  /** Position within the stage's step; the lowest one is the primary page. */
+  stepIndex: number;
+  name: string;
+  /** Public URL (what the screenshot worker fetched). */
+  url: string | null;
+  /** Page in the GHL builder. */
+  nativeUrl: string | null;
+  screenshot: FunnelPageScreenshot | null;
+  /** A/B variants of this page, primary included. */
+  variants: FunnelPageVariant[];
+  embeddedAssets: FunnelPageAsset[];
+  origin: "captured" | "manual" | "suggested";
+  hasTrackingCode?: boolean | null;
+}
+
+export type FunnelActionKind = "crm" | "pipeline" | "message" | "conversion" | "enroll" | "wait" | "other";
+
+export interface FunnelAutomationAction {
+  id: string;
+  /** Platform action type (e.g. "add_contact_tag", "send_sms"). */
+  type: string;
+  kind: FunnelActionKind;
+  label: string;
+  /** Software the action writes to (app key: "ghl", "meta", …). */
+  destinationSoftware: string | null;
+  /** Server-side conversion (Meta CAPI etc.) — `kind === "conversion"`. */
+  conversion: { platform: string; eventName: string } | null;
+}
+
+export interface FunnelAutomationTrigger {
+  /** Platform trigger type (e.g. "form_submission", "survey_submission", "appointment"). */
+  type: string;
+  label: string;
+  /** The asset the trigger listens on, when it has one. */
+  asset: { assetKind: string; assetValue: string; label: string | null } | null;
+  conditionText: string | null;
+  /** Survey outcome the trigger filters on, when it does. */
+  qualification: "qualified" | "disqualified" | null;
+}
+
+export interface FunnelAutomation {
+  id: string;
+  /** Stage the trigger was placed on; null = unplaced (listed, never guessed). */
+  stageId: string | null;
+  connectionId: string;
+  workflowExternalId: string;
+  name: string;
+  /** Platform status ("published" | "draft" | …). */
+  status: string | null;
+  captureState: CaptureState | null;
+  nativeUrl: string | null;
+  trigger: FunnelAutomationTrigger;
+  /** First actions in order; the API caps this list (8). */
+  actions: FunnelAutomationAction[];
+  actionsTruncated: boolean;
+}
+
+export interface FunnelDecisionBranch {
+  outcome: "qualified" | "disqualified";
+  toStageId: string | null;
+  conditionText: string | null;
+  evidence: Evidence;
+}
+
+/** A qualification split, derived from a survey's disqualify logic and the
+ * `branches_to` relationship off its stage. */
+export interface FunnelDecision {
+  id: string;
+  stageId: string;
+  /** The survey that decides. */
+  assetExternalId: string | null;
+  label: string;
+  branches: FunnelDecisionBranch[];
+}
+
+/** A configured server-side conversion report (workflow action → ad platform). */
+export interface FunnelConversion {
+  id: string;
+  stageId: string | null;
+  automationId: string;
+  actionId: string;
+  /** "meta" | "google" | … */
+  platform: string;
+  eventName: string;
+  evidence: Evidence;
+}
+
+/** Browser-side tracking per stage. Pixel / tracking-code capture is out of
+ * scope, so the state is always "not-captured" with a reason. */
+export interface FunnelTracking {
+  stageId: string;
+  pixel: { state: "not-captured"; reason: string };
+}
+
+export interface FunnelAdPlatform {
+  /** Inferred from UTM / conversion targets; never from the ad account. */
+  destination: "meta" | "google" | "tiktok" | "unknown" | null;
+  evidence: Evidence;
+  reason?: string | null;
+}
+
+export interface FunnelUnplacedAutomation {
+  automationId: string;
+  reason: string | null;
+}
+
+export interface FunnelSource {
+  kind: "ghl_funnel" | "workflow_cluster" | "manual";
+  externalId: string | null;
+  url: string | null;
+  /** Native URL guessed from the id until the probe confirms it. */
+  urlVerified?: boolean;
+  updatedAt: string | null;
+}
+
+export interface FunnelEvidence {
+  id: string;
+  stageId?: string | null;
+  method: string;
+  coverage: string;
+  reasonText?: string | null;
+}
+
 export interface FunnelGraph {
-  schemaVersion: 1;
+  schemaVersion: 2;
   funnel: FunnelSummary;
   stages: FunnelStage[];
   relationships: FunnelRelationship[];
   attachments: FunnelAttachment[];
   workflowSummaries: FunnelWorkflowSummary[];
-  evidence: { id: string; stageId?: string | null; method: string; coverage: string; reasonText?: string | null }[];
+  evidence: FunnelEvidence[];
   coverage: Record<string, CoverageState>;
+  pages: FunnelPage[];
+  automations: FunnelAutomation[];
+  decisions: FunnelDecision[];
+  conversions: FunnelConversion[];
+  tracking: FunnelTracking[];
+  adPlatform: FunnelAdPlatform | null;
+  unplaced: FunnelUnplacedAutomation[];
+  source: FunnelSource | null;
+  lastCapturedAt: string | null;
 }
 
 export function fetchFunnels(q?: string): Promise<{ funnels: FunnelSummary[] }> {
@@ -1221,4 +1443,10 @@ export function addFunnelStage(id: string, stage: {
 
 export function reviewFunnel(id: string, expectedRevision: number): Promise<FunnelSummary> {
   return apiPost(`/funnels/${id}/review`, { expectedRevision });
+}
+
+/** Re-run funnel detection for one connection (reads captured artifacts
+ * only — never touches the platform). */
+export function detectFunnels(connectionId: string): Promise<{ funnels: FunnelSummary[] }> {
+  return apiPost(`/funnels/detect?connectionId=${encodeURIComponent(connectionId)}`);
 }

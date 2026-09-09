@@ -8,7 +8,7 @@
 import type { ComponentType } from "react";
 import type { ModuleInfo, NodeId, ScenarioSummary } from "@/app/lib/api";
 
-export type ProviderId = "make" | "ghl";
+export type ProviderId = "make" | "ghl" | "clickfunnels" | "clickfunnels_classic";
 
 /** Platform vocabulary, so copy reads natively per connector. */
 export interface ConnectorNouns {

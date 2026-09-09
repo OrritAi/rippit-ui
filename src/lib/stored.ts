@@ -1,5 +1,7 @@
 "use client";
 
+import type { ProviderId } from "@/lib/connectors/types";
+
 import { useCallback, useSyncExternalStore } from "react";
 
 /*
@@ -76,7 +78,7 @@ export function useHydrated(): boolean {
 }
 
 export interface RecentEntry {
-  provider: "make" | "ghl";
+  provider: ProviderId;
   id: string;
   name: string;
   at: number;

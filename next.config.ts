@@ -20,6 +20,17 @@ const nextConfig: NextConfig = {
         destination: "/map",
         permanent: false,
       },
+      // Funnels became Martech; API paths still say /funnels.
+      {
+        source: "/funnels",
+        destination: "/martech",
+        permanent: false,
+      },
+      {
+        source: "/funnels/:id",
+        destination: "/martech/:id",
+        permanent: false,
+      },
     ];
   },
 };

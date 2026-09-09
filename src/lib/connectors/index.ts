@@ -1,5 +1,7 @@
 import { makeConnector } from "./make";
 import { ghlConnector } from "./ghl";
+import { clickfunnelsConnector } from "./clickfunnels";
+import { clickfunnelsClassicConnector } from "./clickfunnels-classic";
 import type { ConnectorDescriptor, ProviderId } from "./types";
 
 export * from "./types";
@@ -8,6 +10,8 @@ export * from "./types";
 export const CONNECTORS: Record<ProviderId, ConnectorDescriptor> = {
   make: makeConnector,
   ghl: ghlConnector,
+  clickfunnels: clickfunnelsConnector,
+  clickfunnels_classic: clickfunnelsClassicConnector,
 };
 
 export function allConnectors(): ConnectorDescriptor[] {

@@ -12,6 +12,7 @@ const APP_COLORS: [RegExp, string][] = [
   [/slack/i, "#d946ef"],
   [/sheet|google/i, "#22c55e"],
   [/highlevel|ghl/i, "#0ea5e9"],
+  [/clickfunnels/i, "#e8552f"],
   [/close/i, "#4f46e5"],
   [/jotform|typeform|form/i, "#f59e0b"],
   [/http|api|json/i, "#f97316"],
@@ -49,6 +50,7 @@ export function onColorGradient(col: string): string {
 export function appGlyph(app: string): string {
   // Platform identity matches the connector glyphs ("M", "GH").
   if (/^make$/i.test(app)) return "M";
+  if (/^clickfunnels(_classic)?$/i.test(app)) return "CF";
   // Make's "gateway" package is its webhook modules — "GA" reads as noise.
   if (/^gateway$/i.test(app)) return "WH";
   const words = app.split(/[^a-zA-Z0-9]+/).filter(Boolean);
@@ -65,6 +67,7 @@ export function appName(app: string): string {
     api: "API",
     ai: "AI",
     ghl: "GHL",
+    clickfunnels: "ClickFunnels",
     gateway: "Webhooks",
   };
   return app
