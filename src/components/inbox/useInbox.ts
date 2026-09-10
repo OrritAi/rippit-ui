@@ -94,7 +94,7 @@ export function useInbox() {
         card: cards.get(k) ?? null,
         provider,
         refId,
-        reason: `${c.authorName ?? "Someone"}: “${c.body.length > 120 ? `${c.body.slice(0, 117)}…` : c.body}”`,
+        reason: `${c.authorName ?? "Someone"}: “${c.body}”`,
         action: c.parentId ? "Open thread" : "Reply",
         href: `/w/${provider}/${refId}${node && node !== "-" ? `?step=${encodeURIComponent(node)}` : ""}`,
         when: c.createdAt,

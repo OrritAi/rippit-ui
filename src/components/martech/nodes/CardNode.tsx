@@ -9,7 +9,7 @@ import type { ActionNode, AssetNode, PixelNode, TriggerNode } from "@/lib/martec
 import { evidenceClasses, selectionRing } from "./evidence";
 
 /*
- * The 116×54 sub-lane card, in four variants: asset (form / survey /
+ * The 116px-wide sub-lane card (54px when its name fits one line), in four variants: asset (form / survey /
  * calendar on the page), pixel (browser tracking — always not captured),
  * trigger (the workflow's entry condition) and action (one configured step;
  * conversion actions carry the destination's logo).
@@ -38,7 +38,7 @@ export function CardNode({ node, selected }: { node: AssetNode | PixelNode | Tri
   }
   return (
     <div
-      className={`flex h-full w-full items-center gap-2 rounded-control border px-2 ${evidenceClasses(node.evidence)}`}
+      className={`flex min-h-full w-full items-center gap-2 rounded-control border px-2 py-1.5 ${evidenceClasses(node.evidence)}`}
       style={{ boxShadow: selectionRing(selected) }}
     >
       {logo ? (
@@ -55,8 +55,8 @@ export function CardNode({ node, selected }: { node: AssetNode | PixelNode | Tri
         </span>
       )}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[9px] font-semibold uppercase tracking-[.05em] text-t3">{caption}</span>
-        <span className="block truncate text-[11px] font-medium leading-tight" title={node.label}>
+        <span className="block [overflow-wrap:anywhere] text-[9px] font-semibold uppercase leading-[12px] tracking-[.05em] text-t3">{caption}</span>
+        <span className="block [overflow-wrap:anywhere] text-[11px] font-medium leading-tight">
           {node.label}
         </span>
       </span>

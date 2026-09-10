@@ -31,7 +31,7 @@ export function PageNode({
   const role = roleLabel(node.role);
   return (
     <div
-      className={`flex h-full w-full flex-col overflow-hidden rounded-card border ${evidenceClasses(node.evidence)}`}
+      className={`flex min-h-full w-full flex-col overflow-hidden rounded-card border ${evidenceClasses(node.evidence)}`}
       style={{ width, boxShadow: selectionRing(selected) }}
     >
       <div className="relative flex-none overflow-hidden border-b border-line2 bg-plane" style={{ height: thumbH }}>
@@ -42,11 +42,11 @@ export function PageNode({
           </span>
         )}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col justify-center px-2.5 py-1.5">
-        <span className="truncate text-[12px] font-semibold leading-tight" title={node.label}>
+      <div className="flex flex-1 flex-col justify-center px-2.5 py-1.5">
+        <span className="block [overflow-wrap:anywhere] text-[12px] font-semibold leading-tight">
           {node.label}
         </span>
-        <span className="tabular truncate font-mono text-[9.5px] text-t3" title={node.sublabel ?? undefined}>
+        <span className="tabular block [overflow-wrap:anywhere] font-mono text-[9.5px] leading-[13px] text-t3">
           {node.sublabel ?? (node.evidence === "not-captured" ? "Not captured" : "")}
         </span>
       </div>

@@ -12,6 +12,7 @@ export function AppPuck({
   glyph,
   className = "",
   title,
+  radius: radiusProp,
 }: {
   app: string;
   size?: number;
@@ -19,9 +20,11 @@ export function AppPuck({
   glyph?: string;
   className?: string;
   title?: string;
+  /** Corner radius override (default size × 0.3, min 4). */
+  radius?: number;
 }) {
   const col = color ?? appColor(app);
-  const radius = Math.max(4, Math.round(size * 0.3));
+  const radius = radiusProp ?? Math.max(4, Math.round(size * 0.3));
   const font = Math.max(7, Math.round(size * 0.42));
   return (
     <span

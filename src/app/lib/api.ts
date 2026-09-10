@@ -544,6 +544,12 @@ export interface ScenarioSummary {
   /** True when the connection path exposes no step content (GHL OAuth list-only). */
   stepsUnavailable?: boolean;
   reason?: string;
+  /** When this workflow's content was last written (its own capture). */
+  syncedAt?: string | null;
+  /** When it was last confirmed current — the later of its own capture and
+   *  the connection's last successful sync (unchanged workflows are skipped
+   *  by a sync, so their own syncedAt stays put). Drives "synced X ago". */
+  checkedAt?: string | null;
 }
 
 /** One asset / value a node references (from the reference index). */
@@ -785,6 +791,39 @@ export function fetchNodeDetail(
   nodeId: string
 ): Promise<Record<string, unknown>> {
   return apiFetch(`/workflows/${provider}/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}`);
+}
+
+/** One entry of the batch summaries response: the same Summary shape as the
+ *  single route, or why there is none ("not-synced" | "not-captured"). */
+export type WorkflowSummaryResult =
+  | ScenarioSummary
+  | { error: string; stepsUnavailable?: boolean };
+
+export interface WorkflowSummariesResponse {
+  summaries: Record<string, WorkflowSummaryResult>;
+}
+
+/** Batch size for `/workflows/summaries` — under the route's 50-id cap. */
+export const SUMMARIES_CHUNK = 40;
+
+/**
+ * Canvas summaries for many workflows at once ("{source}:{refId}" keys).
+ * Chunked so the workflow map can request a whole unfold wave in one call
+ * per 40 ids; results are merged into one map. Unknown or cross-workspace
+ * ids come back as `{error: "not-synced"}` — never as an exception.
+ */
+export async function fetchWorkflowSummaries(keys: string[]): Promise<WorkflowSummariesResponse> {
+  const unique = [...new Set(keys)];
+  const chunks: string[][] = [];
+  for (let i = 0; i < unique.length; i += SUMMARIES_CHUNK) chunks.push(unique.slice(i, i + SUMMARIES_CHUNK));
+  const parts = await Promise.all(
+    chunks.map((ids) =>
+      apiFetch<WorkflowSummariesResponse>(`/workflows/summaries?ids=${encodeURIComponent(ids.join(","))}`)
+    )
+  );
+  const summaries: Record<string, WorkflowSummaryResult> = {};
+  for (const p of parts) Object.assign(summaries, p?.summaries ?? {});
+  return { summaries };
 }
 
 /* ─── Connections ──────────────────────────────────────────────────────── */
@@ -1079,6 +1118,8 @@ export interface WorkflowCard {
   name: string;
   status?: string | null;
   stepCount?: number;
+  /** Editor deep link on the platform (null when none is derivable). */
+  nativeUrl?: string | null;
   isActive?: boolean;
   talksToGhl?: boolean;
   issueCounts?: IssueCounts;

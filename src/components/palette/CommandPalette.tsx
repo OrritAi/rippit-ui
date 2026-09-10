@@ -98,7 +98,7 @@ function IconBox({ icon: Icon }: { icon: LucideIcon }) {
   );
 }
 
-const ITEM = "h-9 gap-2.5 rounded-[7px] px-[9px] text-[13.5px] text-t1 data-[selected=true]:bg-hover";
+const ITEM = "min-h-9 gap-2.5 rounded-[7px] px-[9px] text-[13.5px] text-t1 data-[selected=true]:bg-hover";
 
 export function CommandPalette() {
   const router = useRouter();
@@ -170,7 +170,7 @@ export function CommandPalette() {
                 }}
               >
                 <IconBox icon={Zap} />
-                <span className="flex-1 truncate">{a.label}</span>
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{a.label}</span>
                 {a.hint && <CommandShortcut className="font-mono text-[9.5px]">{a.hint}</CommandShortcut>}
               </CommandItem>
             ))}
@@ -186,10 +186,10 @@ export function CommandPalette() {
                 return (
                   <CommandItem key={`${h.type}:${h.provider}:${h.workflowExternalId}:${h.nodeId ?? ""}:${h.value ?? ""}`} value={`${query} ${h.type} ${h.label ?? ""} ${h.workflowName ?? ""}`} className={ITEM} onSelect={() => go(hitHref(h))}>
                     <IconBox icon={h.type === "asset" ? Box : Search} />
-                    <span className="truncate">{h.label}</span>
+                    <span className="min-w-0 [overflow-wrap:anywhere]">{h.label}</span>
                     <span className="min-w-0 flex-1 text-[11.5px] text-t2">
-                      <span className="block truncate font-medium">{h.workflowName || "Workflow name unavailable"}</span>
-                      <span className="block truncate text-t3">{[h.provider && isProviderId(h.provider) ? CONNECTORS[h.provider].label : null, h.connectionLabel, h.type === "asset" ? kindLabel(h.kind ?? "") : h.ordinal ? `Step ${h.ordinal}` : h.secondary].filter(Boolean).join(" · ")}</span>
+                      <span className="block [overflow-wrap:anywhere] font-medium">{h.workflowName || "Workflow name unavailable"}</span>
+                      <span className="block [overflow-wrap:anywhere] text-t3">{[h.provider && isProviderId(h.provider) ? CONNECTORS[h.provider].label : null, h.connectionLabel, h.type === "asset" ? kindLabel(h.kind ?? "") : h.ordinal ? `Step ${h.ordinal}` : h.secondary].filter(Boolean).join(" · ")}</span>
                     </span>
                     <CommandShortcut className="font-mono text-[9.5px]">{h.type === "asset" ? "asset" : `${connector?.nouns.step ?? "step"}${h.ordinal ? ` ${h.ordinal}` : ""}`}</CommandShortcut>
                   </CommandItem>
@@ -211,7 +211,7 @@ export function CommandPalette() {
                 }}
               >
                 <IconBox icon={Crosshair} />
-                <span className="truncate">{n.label}</span>
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{n.label}</span>
                 <CommandShortcut className="font-mono text-[9.5px]">focus</CommandShortcut>
               </CommandItem>
             ))}
@@ -243,7 +243,7 @@ export function CommandPalette() {
             {recent.slice(0, 6).map((r) => (
               <CommandItem key={`${r.provider}:${r.id}`} value={`recent ${r.name}`} className={ITEM} onSelect={() => go(`/w/${r.provider}/${r.id}`)}>
                 <IconBox icon={Clock3} />
-                <span className="truncate">{r.name}</span>
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{r.name}</span>
                 <CommandShortcut className="font-mono text-[9.5px]">{getConnector(r.provider).shortLabel}</CommandShortcut>
               </CommandItem>
             ))}
@@ -255,7 +255,7 @@ export function CommandPalette() {
             {views.map((v) => (
               <CommandItem key={v.id} value={`view ${v.name}`} className={ITEM} onSelect={() => go(`/${v.kind === "unified" ? "map" : "dashboard"}?view=${encodeURIComponent(v.id)}`)}>
                 <IconBox icon={Bookmark} />
-                <span className="truncate">{v.name}</span>
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{v.name}</span>
                 <CommandShortcut className="font-mono text-[9.5px]">{v.kind === "unified" ? "map" : "dashboard"}</CommandShortcut>
               </CommandItem>
             ))}
@@ -282,8 +282,8 @@ export function CommandPalette() {
               {entries.map((e) => (
                 <CommandItem key={`${e.provider}:${e.refId}`} value={`${e.name} ${e.groupPath.join(" ")} ${connector.label}`} className={ITEM} onSelect={() => go(workflowHref({ source: e.provider, refId: e.refId }))}>
                   <AppPuck app={e.provider} size={20} />
-                  <span className="truncate">{e.name}</span>
-                  {e.groupPath.length > 0 && <span className="truncate text-[11.5px] text-t3">{e.groupPath.join(" / ")}</span>}
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{e.name}</span>
+                  {e.groupPath.length > 0 && <span className="min-w-0 [overflow-wrap:anywhere] text-[11.5px] text-t3">{e.groupPath.join(" / ")}</span>}
                   <CommandShortcut className="font-mono text-[9.5px]">{connector.shortLabel}</CommandShortcut>
                 </CommandItem>
               ))}
@@ -296,7 +296,7 @@ export function CommandPalette() {
             {linkNames.map((l) => (
               <CommandItem key={l.key} value={`link ${l.label}`} className={ITEM} onSelect={() => go(workflowHref({ source: l.from.source, refId: l.from.refId }))}>
                 <IconBox icon={l.dead ? ArrowUpRight : Link2} />
-                <span className={`truncate ${l.dead ? "text-err-text" : ""}`}>{l.label}</span>
+                <span className={`min-w-0 flex-1 [overflow-wrap:anywhere] ${l.dead ? "text-err-text" : ""}`}>{l.label}</span>
                 <CommandShortcut className="font-mono text-[9.5px]">{l.dead ? "broken" : l.kind === "subflow" ? "subflow" : "webhook"}</CommandShortcut>
               </CommandItem>
             ))}

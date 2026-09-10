@@ -28,6 +28,7 @@ export function SoftwareLogo({ app, fallback, size = 22 }: { app: string; fallba
       src={`/software/${name}.svg`}
       alt=""
       aria-hidden="true"
+      draggable={false}
       width={size}
       height={size}
       className="inline-block flex-none object-contain"

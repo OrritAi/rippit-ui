@@ -160,10 +160,10 @@ function FunnelCard({ funnel: f, delay }: { funnel: FunnelSummary; delay: number
             <Funnel aria-hidden="true" className="size-4" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13.5px] font-semibold leading-tight" title={f.name}>
+            <span className="block [overflow-wrap:anywhere] text-[13.5px] font-semibold leading-tight">
               {f.name}
             </span>
-            <span className="block truncate text-[11.5px] text-t3">{f.accountLabel ?? "No account"}</span>
+            <span className="block [overflow-wrap:anywhere] text-[11.5px] text-t3">{f.accountLabel ?? "No account"}</span>
           </span>
           <StatusPill pill={REVIEW_PILL[f.reviewState] ?? REVIEW_PILL.draft} dot={false} />
         </div>
@@ -171,7 +171,7 @@ function FunnelCard({ funnel: f, delay }: { funnel: FunnelSummary; delay: number
           {f.origin === "detected" && (
             <span className="rounded-full border border-line bg-hover px-1.5 py-[1px] text-[9.5px] font-semibold uppercase tracking-[.05em] text-t3">Detected</span>
           )}
-          <span className="tabular truncate font-mono text-[10.5px] text-t3">{meta}</span>
+          <span className="tabular min-w-0 [overflow-wrap:anywhere] font-mono text-[10.5px] text-t3">{meta}</span>
         </div>
         <CoverageChips coverage={f.coverage} compact />
       </Link>

@@ -19,9 +19,9 @@ const TONE: Record<Execution["status"], { accent: string; text: string; label: s
   unknown: { accent: "var(--off)", text: "var(--off-text)", label: "unknown" },
 };
 
-export function relativeTime(iso: string | null): string {
+export function relativeTime(iso: string | null, now: number = Date.now()): string {
   if (!iso) return "—";
-  const ms = Date.now() - new Date(iso).getTime();
+  const ms = now - new Date(iso).getTime();
   if (!Number.isFinite(ms)) return "—";
   const m = Math.round(ms / 60000);
   if (m < 1) return "just now";

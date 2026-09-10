@@ -211,8 +211,8 @@ export default function HealthPage() {
                     <AppPuck app={r.entry.provider} size={22} />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12.5px] font-semibold text-t1">{r.entry.name}</span>
-                    <span className="tabular mt-[1px] block truncate font-mono text-[9.5px] text-t3">
+                    <span className="block [overflow-wrap:anywhere] text-[12.5px] font-semibold text-t1">{r.entry.name}</span>
+                    <span className="tabular mt-[1px] block [overflow-wrap:anywhere] font-mono text-[9.5px] text-t3">
                       {connector.shortLabel}
                       {accountOf.get(r.entry.connectionId) ? ` · ${accountOf.get(r.entry.connectionId)}` : ""}
                       {folder ? ` · ${folder}` : ""}

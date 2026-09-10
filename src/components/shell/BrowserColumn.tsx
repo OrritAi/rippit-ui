@@ -28,6 +28,7 @@ import { workflowHref } from "@/lib/portals";
 import { fetchViews, SavedView } from "@/app/lib/api";
 import { AppPuck } from "@/components/shared/AppPuck";
 import { readStored, useRecentWorkflows, useStoredJson, writeStored } from "@/lib/stored";
+import { ExpandToggle, useClamp } from "@/components/shared/ExpandableText";
 
 /*
  * 206px workflow browser — folders are the browsing unit (hundreds of
@@ -68,6 +69,18 @@ function orderBy<T>(items: T[], order: string[], key: (t: T) => string): T[] {
 
 const ROW =
   "flex w-full cursor-pointer items-center gap-1.5 rounded-row border-0 bg-transparent px-1.5 text-left transition-[background] duration-[var(--dur-fast)] ease-[var(--ease-out)] hover:bg-hover";
+
+/** Dense rows clamp names to two lines; ClampedRow adds the expand control beside the link. */
+function ClampedRow({ text, label, children }: { text: string; label: string; children: (clamp: ReturnType<typeof useClamp>) => React.ReactNode }) {
+  const [expanded, setExpanded] = useState(false);
+  const clamp = useClamp(2, text, expanded);
+  return (
+    <div className="flex w-full items-start">
+      {children(clamp)}
+      {clamp.overflowing && <ExpandToggle expanded={expanded} onToggle={() => setExpanded((v) => !v)} label={label} />}
+    </div>
+  );
+}
 
 function SevDot({ sev }: { sev: Sev }) {
   if (!sev) return null;
@@ -219,14 +232,20 @@ export function WorkflowBrowser() {
               {hits.length === HIT_CAP ? "+" : ""} match{hits.length === 1 ? "" : "es"}
             </p>
             {hits.map((h) => (
-              <Link key={h.key} href={h.href} title={h.path} className={`${ROW} h-[29px] gap-[7px]`}>
-                <AppPuck app={h.app} size={16} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[11.5px] text-t1">{h.name}</span>
-                  <span className="tabular block truncate font-mono text-[9px] text-t3">{h.path}</span>
-                </span>
-                <SevDot sev={h.sev} />
-              </Link>
+              <ClampedRow key={h.key} text={h.name} label={`Show the full name of ${h.name}`}>
+                {(clamp) => (
+                  <Link href={h.href} className={`${ROW} min-h-[29px] min-w-0 flex-1 gap-[7px] py-[3px]`}>
+                    <AppPuck app={h.app} size={16} />
+                    <span className="min-w-0 flex-1">
+                      <span ref={clamp.attach} style={clamp.style} className="text-[11.5px] text-t1">
+                        {h.name}
+                      </span>
+                      <span className={`tabular block font-mono text-[9px] text-t3 [overflow-wrap:anywhere]`}>{h.path}</span>
+                    </span>
+                    <SevDot sev={h.sev} />
+                  </Link>
+                )}
+              </ClampedRow>
             ))}
             {hits.length === 0 && <p className="px-1.5 py-1 text-[11.5px] italic text-t3">No workflows match</p>}
           </div>
@@ -238,9 +257,9 @@ export function WorkflowBrowser() {
                 {recent.map((r) => {
                   const href = `/w/${r.provider}/${r.id}`;
                   return (
-                    <Link key={`${r.provider}:${r.id}`} href={href} aria-current={pathname === href ? "page" : undefined} className={`${ROW} h-[26px] text-[11.5px] ${pathname === href ? "bg-hover font-medium text-t1" : "text-t2 hover:text-t1"}`}>
+                    <Link key={`${r.provider}:${r.id}`} href={href} aria-current={pathname === href ? "page" : undefined} className={`${ROW} min-h-[26px] py-[3px] text-[11.5px] ${pathname === href ? "bg-hover font-medium text-t1" : "text-t2 hover:text-t1"}`}>
                       <Clock3 aria-hidden="true" className="size-[11px] flex-none text-t3" />
-                      <span className="truncate">{r.name}</span>
+                      <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{r.name}</span>
                     </Link>
                   );
                 })}
@@ -308,10 +327,10 @@ export function WorkflowBrowser() {
                   <Link
                     key={v.id}
                     href={`/${v.kind === "unified" ? "map" : "dashboard"}?view=${encodeURIComponent(v.id)}`}
-                    className={`${ROW} h-[26px] text-[11.5px] text-t2 hover:text-t1`}
+                    className={`${ROW} min-h-[26px] py-[3px] text-[11.5px] text-t2 hover:text-t1`}
                   >
                     <Bookmark aria-hidden="true" className="size-[11px] flex-none text-t3" />
-                    <span className="truncate">{v.name}</span>
+                    <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{v.name}</span>
                   </Link>
                 ))}
               </section>
@@ -361,9 +380,9 @@ function ProviderSection({ provider, count, children }: { provider: ProviderId; 
       layout
       className="group/reorder relative mb-2.5 rounded-row bg-sidebar"
     >
-      <div className="flex h-[24px] items-center gap-[6px] border-b border-line2 px-1.5">
+      <div className="flex min-h-[24px] items-center gap-[6px] border-b border-line2 px-1.5">
         <AppPuck app={connector.id} color={connector.brandColor} size={14} />
-        <span className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-wide text-t3">{connector.label}</span>
+        <span className="min-w-0 flex-1 [overflow-wrap:anywhere] text-[11px] font-semibold uppercase tracking-wide text-t3">{connector.label}</span>
         <span className="tabular font-mono text-[10px] text-t3">{count}</span>
         <Grip controls={controls} label={`Drag to reorder the ${connector.label} section`} />
       </div>
@@ -422,7 +441,7 @@ function ConnectionTree({
   );
   return (
     <div className="mb-1.5">
-      <div className="group/reorder flex h-[27px] items-center gap-[6px] rounded-row px-1.5 transition-[background] duration-[var(--dur-fast)] hover:bg-hover">
+      <div className="group/reorder flex min-h-[27px] items-center gap-[6px] rounded-row px-1.5 py-[3px] transition-[background] duration-[var(--dur-fast)] hover:bg-hover">
         <button
           type="button"
           onClick={onToggle}
@@ -442,7 +461,7 @@ function ConnectionTree({
           <ChevronRight aria-hidden="true" className={`size-[10px] flex-none text-t3 transition-transform duration-[var(--dur-fast)] ease-[var(--ease-out)] ${expanded ? "rotate-90" : ""}`} />
           <AppPuck app={connector.id} color={connector.brandColor} size={15} />
           <span
-            className="min-w-0 flex-1 truncate text-[11px] font-semibold text-t1"
+            className="min-w-0 flex-1 [overflow-wrap:anywhere] text-[11px] font-semibold text-t1"
             title={`${connector.label} · ${connection.displayName}${connection.accountName && connection.label ? ` (${connection.accountName})` : ""} · id ${connection.externalId}`}
           >
             {connector.shortLabel} · {connection.displayName}
@@ -523,7 +542,7 @@ function ConnectionTree({
       {groups.map((g) => (
         <div key={g.id}>
           {groups.length > 1 && (
-            <p className="truncate px-1.5 pb-0.5 pt-1 font-mono text-[9.5px] text-t3" title={g.label}>
+            <p className="[overflow-wrap:anywhere] px-1.5 pb-0.5 pt-1 font-mono text-[9.5px] text-t3">
               {g.label}
             </p>
           )}
@@ -574,20 +593,26 @@ const FolderRows = memo(function FolderRows({
       : null;
   return (
     <div>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        className={`${ROW} h-[27px]`}
-      >
-        <ChevronRight
-          aria-hidden="true"
-          className={`size-[10px] flex-none text-t3 transition-transform duration-[var(--dur-fast)] ease-[var(--ease-out)] ${open ? "rotate-90" : ""}`}
-        />
-        <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-t2">{folder.label}</span>
-        <SevDot sev={sev} />
-        <span className="tabular font-mono text-[9px] text-t3">{folder.items.length}</span>
-      </button>
+      <ClampedRow text={folder.label} label={`Show the full name of folder ${folder.label}`}>
+        {(clamp) => (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={open}
+            className={`${ROW} min-h-[27px] min-w-0 flex-1 py-[3px]`}
+          >
+            <ChevronRight
+              aria-hidden="true"
+              className={`size-[10px] flex-none text-t3 transition-transform duration-[var(--dur-fast)] ease-[var(--ease-out)] ${open ? "rotate-90" : ""}`}
+            />
+            <span ref={clamp.attach} style={clamp.style} className="min-w-0 flex-1 text-[11.5px] font-medium text-t2">
+              {folder.label}
+            </span>
+            <SevDot sev={sev} />
+            <span className="tabular font-mono text-[9px] text-t3">{folder.items.length}</span>
+          </button>
+        )}
+      </ClampedRow>
       <Accordion open={open}>
         <div className="my-px mb-[3px]">
           {folder.items.map((it) => (
@@ -668,16 +693,21 @@ const WorkflowRow = memo(function WorkflowRow({
   const href = workflowHref({ source: provider, refId: item.refId });
   const active = pathname === href;
   return (
-    <Link
-      href={href}
-      title={item.name}
-      aria-current={active ? "page" : undefined}
-      className={`${ROW} h-[26px] ${indent ? "pl-[22px]" : ""} ${active ? "bg-hover" : ""}`}
-    >
-      <StatusDot item={item} />
-      <span className={`min-w-0 flex-1 truncate text-[11px] ${active ? "font-medium text-t1" : "text-t2"}`}>{item.name}</span>
-      <ChangeCount n={changedOf.get(`${provider}:${item.refId}`)} />
-      <SevDot sev={sevOf.get(`${provider}:${item.refId}`) ?? null} />
-    </Link>
+    <ClampedRow text={item.name} label={`Show the full name of ${item.name}`}>
+      {(clamp) => (
+        <Link
+          href={href}
+          aria-current={active ? "page" : undefined}
+          className={`${ROW} min-h-[26px] min-w-0 flex-1 py-[3px] ${indent ? "pl-[22px]" : ""} ${active ? "bg-hover" : ""}`}
+        >
+          <StatusDot item={item} />
+          <span ref={clamp.attach} style={clamp.style} className={`min-w-0 flex-1 text-[11px] ${active ? "font-medium text-t1" : "text-t2"}`}>
+            {item.name}
+          </span>
+          <ChangeCount n={changedOf.get(`${provider}:${item.refId}`)} />
+          <SevDot sev={sevOf.get(`${provider}:${item.refId}`) ?? null} />
+        </Link>
+      )}
+    </ClampedRow>
   );
 });

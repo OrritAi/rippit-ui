@@ -108,7 +108,7 @@ export function Inspector({
           {node.icon}
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
-          <h2 className="truncate text-[15.5px] font-semibold">{node.name}</h2>
+          <h2 className="[overflow-wrap:anywhere] text-[15.5px] font-semibold">{node.name}</h2>
           <div className="text-[11.5px] text-t3">{node.sub}</div>
         </div>
         <div
@@ -199,7 +199,7 @@ export function Inspector({
               {payloadRows.map((r, i) => (
                 <div
                   key={i}
-                  className="truncate whitespace-nowrap"
+                  className="[overflow-wrap:anywhere]"
                   style={{ paddingLeft: r.pad }}
                 >
                   <span style={{ color: "var(--jkey)" }}>{r.k}</span>

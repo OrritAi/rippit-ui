@@ -63,7 +63,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ kind: st
                 <KindIcon kind={kind} className="size-[17px]" />
               </span>
               <span className="min-w-0 flex-1">
-                <h2 className="m-0 truncate text-[16px] font-bold tracking-[-0.01em]">{title}</h2>
+                <h2 className="m-0 [overflow-wrap:anywhere] text-[16px] font-bold tracking-[-0.01em]">{title}</h2>
                 <p className="tabular m-0 mt-[2px] font-mono text-[10.5px] text-t3">
                   {kindLabel(kind).toLowerCase()}
                   {data ? ` · ${data.uses.length} use${data.uses.length === 1 ? "" : "s"} across the estate` : ""}
@@ -97,11 +97,11 @@ export default function AssetDetailPage({ params }: { params: Promise<{ kind: st
                       <Link key={`${k}:${u.nodeId ?? i}`} href={href} className="flex w-full items-center gap-2.5 border-b border-line2 px-3.5 py-[11px] text-left transition-[background] duration-[var(--dur-fast)] last:border-b-0 hover:bg-hover">
                         <AppPuck app={u.provider} size={22} />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[12.5px] font-semibold text-t1">
+                          <span className="block [overflow-wrap:anywhere] text-[12.5px] font-semibold text-t1">
                             {u.workflowName || `${connector.shortLabel} ${u.workflowExternalId}`}
                             {u.isActive === false && <span className="ml-1.5 text-[10.5px] font-normal text-t3">· inactive</span>}
                           </span>
-                          <span className="tabular mt-[1px] block truncate font-mono text-[9.5px] text-t3">
+                          <span className="tabular mt-[1px] block [overflow-wrap:anywhere] font-mono text-[9.5px] text-t3">
                             {connector.nouns.step} {u.ordinal ?? u.nodeId ?? "?"}
                             {u.nodeLabel ? ` · ${u.nodeLabel}` : ""} · {connector.shortLabel}
                             {u.connectionLabel ? ` · ${u.connectionLabel}` : ""}

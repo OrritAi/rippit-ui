@@ -16,7 +16,7 @@ export function AdPlatformNode({ node, selected }: { node: AdNode; selected: boo
   const software = node.inferred ? adPlatformSoftware(node.destination) : null;
   return (
     <div
-      className={`flex h-full w-full items-center gap-2.5 rounded-card border px-3 ${evidenceClasses(node.evidence)}`}
+      className={`flex min-h-full w-full items-center gap-2.5 rounded-card border px-3 py-2 ${evidenceClasses(node.evidence)}`}
       style={{ boxShadow: selectionRing(selected) }}
     >
       {software ? (
@@ -33,8 +33,8 @@ export function AdPlatformNode({ node, selected }: { node: AdNode; selected: boo
         </span>
       )}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[12.5px] font-semibold leading-tight">{node.label}</span>
-        <span className="block truncate text-[10px] text-t3">{node.sublabel}</span>
+        <span className="block [overflow-wrap:anywhere] text-[12.5px] font-semibold leading-tight">{node.label}</span>
+        <span className="block [overflow-wrap:anywhere] text-[10px] leading-[13px] text-t3">{node.sublabel}</span>
       </span>
     </div>
   );

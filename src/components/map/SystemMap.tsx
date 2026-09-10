@@ -321,10 +321,10 @@ export function SystemMap({
                     onFocus={() => setHover(c.key)}
                     onBlur={() => setHover(null)}
                     title={`Open ${c.card.name}`}
-                    className="absolute left-0 -top-[26px] flex max-w-[260px] cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-left"
+                    className="absolute bottom-full left-0 mb-[5px] flex max-w-[260px] cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-left"
                   >
                     <AppPuck app={conn.id} color={conn.brandColor} size={16} />
-                    <span className="truncate text-[12px] font-bold text-t1">{c.card.name}</span>
+                    <span className="min-w-0 [overflow-wrap:anywhere] text-[12px] font-bold text-t1">{c.card.name}</span>
                     <span className="tabular flex-none font-mono text-[9px] text-t3">{conn.shortLabel}</span>
                     <span aria-hidden="true" className="size-[5px] flex-none rounded-full" style={{ background: tone }} />
                     {c.sev && <span aria-hidden="true" className="size-[5px] flex-none rounded-full" style={{ background: c.sev === "err" ? "var(--err)" : "var(--warn)", boxShadow: `0 0 5px ${c.sev === "err" ? "var(--err)" : "var(--warn)"}` }} />}
@@ -386,9 +386,9 @@ export function SystemMap({
                   className="absolute"
                   style={{ left: b.x, top: b.y, width: b.w, height: b.h, opacity: dim ? 0.35 : 1, transition: "opacity .15s", animation: settled && !reduced ? `fadeUp .45s var(--ease-out) ${Math.min(i, 20) * 0.06}s both` : undefined }}
                 >
-                  <button type="button" onClick={() => go(workflowHref(b.group))} onMouseEnter={() => setHover(b.id)} onMouseLeave={() => setHover(null)} onFocus={() => setHover(b.id)} onBlur={() => setHover(null)} title={`Open ${b.name}`} className="absolute left-0 -top-[26px] flex max-w-[260px] cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-left">
+                  <button type="button" onClick={() => go(workflowHref(b.group))} onMouseEnter={() => setHover(b.id)} onMouseLeave={() => setHover(null)} onFocus={() => setHover(b.id)} onBlur={() => setHover(null)} title={`Open ${b.name}`} className="absolute bottom-full left-0 mb-[5px] flex max-w-[260px] cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-left">
                     <AppPuck app={conn.id} color={conn.brandColor} size={16} />
-                    <span className="truncate text-[12px] font-bold text-t1">{b.name}</span>
+                    <span className="min-w-0 [overflow-wrap:anywhere] text-[12px] font-bold text-t1">{b.name}</span>
                     <span className="tabular flex-none font-mono text-[9px] text-t3">{conn.shortLabel}</span>
                     {card && <span aria-hidden="true" className="size-[5px] flex-none rounded-full" style={{ background: card.status === "paused" ? "var(--warn)" : card.isActive ? "var(--ok)" : "var(--off)" }} />}
                   </button>
@@ -472,7 +472,7 @@ export function SystemMap({
           {graph.groups.map((g) => (
             <Link key={g.id} href={workflowHref(g)} className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-line bg-glass px-2.5 py-1 text-[11px] font-semibold text-t2 backdrop-blur-[8px] hover:text-t1">
               <span aria-hidden="true" className="size-[7px] rounded-[2px]" style={{ background: providerColor(g.source) }} />
-              <span className="max-w-[160px] truncate">{g.name}</span>
+              <span className="max-w-[160px] text-left [overflow-wrap:anywhere]">{g.name}</span>
             </Link>
           ))}
         </div>

@@ -127,8 +127,8 @@ export function MartechInspector({
                       className="flex w-full cursor-pointer items-center gap-2 rounded-row px-1.5 py-1 text-left text-[12px] hover:bg-hover"
                     >
                       <span className="flex-none text-t3">{edgeVerb(e)}</span>
-                      <span className="min-w-0 flex-1 truncate font-medium text-t1">{target.label}</span>
-                      {e.label && <span className={`flex-none truncate text-[10.5px] ${e.tone === "err" ? "text-err-text" : e.tone === "warn" ? "text-warn-text" : "text-t3"}`}>{e.label}</span>}
+                      <span className="min-w-0 flex-1 [overflow-wrap:anywhere] font-medium text-t1">{target.label}</span>
+                      {e.label && <span className={`min-w-0 max-w-[45%] flex-none text-right [overflow-wrap:anywhere] text-[10.5px] ${e.tone === "err" ? "text-err-text" : e.tone === "warn" ? "text-warn-text" : "text-t3"}`}>{e.label}</span>}
                       {(e.evidence === "not-captured" || e.validity !== "current") && (
                         <span className="flex-none text-[10px] text-t3">{e.validity !== "current" ? e.validity.replace(/_/g, " ") : "not captured"}</span>
                       )}
@@ -153,13 +153,13 @@ export function MartechInspector({
                     </span>
                     <span className="min-w-0 flex-1">
                       {a.nativeUrl ? (
-                        <a href={a.nativeUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 truncate text-[12px] font-medium text-t1 underline-offset-4 hover:underline">
-                          <span className="truncate">{name}</span>
+                        <a href={a.nativeUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[12px] font-medium text-t1 underline-offset-4 hover:underline">
+                          <span className="min-w-0 [overflow-wrap:anywhere]">{name}</span>
                           <ExternalLink aria-hidden="true" className="size-3 flex-none text-t3" />
                           <span className="sr-only">(opens in GoHighLevel, new tab)</span>
                         </a>
                       ) : (
-                        <span className="block truncate text-[12px] font-medium text-t1">{name}</span>
+                        <span className="block [overflow-wrap:anywhere] text-[12px] font-medium text-t1">{name}</span>
                       )}
                       <span className="block text-[10.5px] text-t3">{ASSET_KIND_LABEL[a.kind]}</span>
                     </span>
@@ -260,10 +260,10 @@ function Header({ node, head }: { node: MartechNode; head: ReturnType<typeof hea
         </span>
       )}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13.5px] font-semibold leading-tight" title={node.label}>
+        <span className="block [overflow-wrap:anywhere] text-[13.5px] font-semibold leading-tight">
           {node.label}
         </span>
-        <span className="block truncate text-[10.5px] text-t3">{subtitle}</span>
+        <span className="block [overflow-wrap:anywhere] text-[10.5px] text-t3">{subtitle}</span>
       </span>
       <EvidencePill evidence={node.evidence} />
     </>
@@ -366,7 +366,7 @@ function WhatHappensHere({ node, graph, stageName }: { node: MartechNode; graph:
                 <span className={`flex-none rounded-full border px-1.5 py-[1px] text-[10px] font-semibold ${b.outcome === "disqualified" ? "border-[color-mix(in_srgb,var(--err)_40%,transparent)] text-err-text" : "border-line text-t2"}`}>
                   {b.outcome}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-t1">{stageName(b.toStageId) ?? "Destination not captured"}</span>
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere] text-t1">{stageName(b.toStageId) ?? "Destination not captured"}</span>
                 <span className="flex-none text-[10.5px] text-t3">{b.conditionText ?? EVIDENCE_LABEL[b.evidence]}</span>
               </li>
             ))}
@@ -444,14 +444,14 @@ function AutomationRow({ automation }: { automation: FunnelAutomation }) {
   return (
     <li className="flex flex-col gap-1 rounded-row border border-line2 px-2 py-1.5">
       <div className="flex items-center gap-2">
-        <Link href={href} className="min-w-0 flex-1 truncate text-[12px] font-medium text-t1 underline-offset-4 hover:underline" title={automation.name}>
+        <Link href={href} className="min-w-0 flex-1 [overflow-wrap:anywhere] text-[12px] font-medium text-t1 underline-offset-4 hover:underline">
           {automation.name}
         </Link>
         <StatusPill pill={workflowStatusPill(automation.status)} dot={false} />
         {automation.captureState && <CaptureBadge capture={automation.captureState} compact />}
       </div>
       <div className="flex items-center gap-2 text-[10.5px] text-t3">
-        <span className="min-w-0 flex-1 truncate">
+        <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
           {automation.trigger.label}
           {automation.trigger.conditionText ? ` · ${automation.trigger.conditionText}` : ""}
           {` · ${automation.actions.length}${automation.actionsTruncated ? "+" : ""} action${automation.actions.length === 1 && !automation.actionsTruncated ? "" : "s"}`}

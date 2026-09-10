@@ -75,6 +75,11 @@
   --chg: #0284c7;
   --chg-text: #075985;
 
+  /* Workflow map accent — one constant, not a provider brand. Graphic role
+     (rings, edges, pill tint) needs 3:1; text role (chips, hits) 4.5:1. */
+  --map-accent: #0284c7;
+  --map-accent-text: #0369a1;
+
   /* Legacy aliases used by existing pages */
   --background: var(--bg);
   --foreground: var(--text);
@@ -142,6 +147,9 @@
   --chg: #38bdf8;
   --chg-text: #7dd3fc;
 
+  --map-accent: #0ea5e9;
+  --map-accent-text: #0ea5e9;
+
   --primary-hover: #d4d4d8;
 
   --sidebar: #0c0c0f;
@@ -175,6 +183,8 @@
   --color-chg: var(--chg);
   --color-chg-text: var(--chg-text);
   --color-line-strong: var(--line-strong);
+  --color-map-accent: var(--map-accent);
+  --color-map-accent-text: var(--map-accent-text);
 
   /* shadcn/ui mapping (monochrome accent rule: primary = text on bg) */
   --color-background: var(--bg);
@@ -345,6 +355,113 @@ body {
 .anim-pop-in { animation: popIn 0.22s var(--ease-out) both; }
 .anim-rise-in { animation: riseIn 0.55s var(--ease-out) both; }
 .anim-slide-in { animation: slideIn 0.26s var(--ease-out) both; }
+
+/*
+  Workflow map (src/components/workflowMap). Keyframes and classes from the
+  design handoff; values are final. `.wm-edge` is the base for every edge
+  path — add `.wm-edge-root` (depth 0) or `.wm-edge-hot` (touches the
+  selected node) on top of it. `.wm-lite` on the map shell stops the drift
+  when the map is large; the global reduced-motion rule below neutralises
+  everything else.
+*/
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes branchin {
+  from { opacity: 0; transform: translateX(-12px) scale(0.94); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes sidein {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes edgedrift {
+  to { stroke-dashoffset: -13; }
+}
+@keyframes edgein {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes travel {
+  from { offset-distance: 0%; }
+  to { offset-distance: 100%; }
+}
+.wm-dots {
+  /* Absolute in the canvas wrapper, under the transparent scroll viewport:
+     it never scrolls with the content and never leaks outside the canvas
+     (a fixed layer would, and the shell's page transition transform would
+     re-parent it mid-animation). */
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(var(--dot) 1.2px, transparent 1.6px);
+  background-size: 24px 24px;
+  -webkit-mask-image: radial-gradient(ellipse 92% 88% at 42% 45%, black 52%, transparent 100%);
+  mask-image: radial-gradient(ellipse 92% 88% at 42% 45%, black 52%, transparent 100%);
+}
+.wm-rise {
+  animation: rise 0.45s var(--ease-out) both;
+}
+.wm-branch {
+  animation: branchin 0.35s var(--ease-out) both;
+}
+.wm-slidein {
+  animation: sidein 0.26s var(--ease-out) both;
+}
+.wm-edge {
+  fill: none;
+  stroke: var(--driftc);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 7;
+  /* drift forever + fade in once on mount */
+  animation: edgedrift 1.4s linear infinite, edgein 0.35s var(--ease-out) both;
+}
+.wm-edge-root {
+  stroke: color-mix(in srgb, var(--map-accent) 60%, transparent);
+}
+.wm-edge-fan {
+  stroke-opacity: 0.55;
+}
+.wm-edge-chain {
+  stroke: var(--driftc);
+  stroke-dasharray: none;
+  animation: edgein 0.35s var(--ease-out) both;
+}
+.wm-edge-join {
+  stroke: var(--driftc);
+}
+.wm-edge-jump {
+  stroke: var(--driftc);
+  stroke-dasharray: 2 5;
+}
+.wm-edge-hot {
+  stroke-opacity: 1;
+  stroke: var(--map-accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 7;
+  animation-duration: 1s, 0.35s;
+}
+.wm-pulse {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: var(--map-accent);
+  box-shadow: 0 0 8px var(--map-accent);
+  offset-rotate: 0deg;
+  animation: travel 1.6s linear infinite;
+  pointer-events: none;
+}
+.wm-lite .wm-edge {
+  animation: none;
+}
+.wm-row {
+  contain: layout style;
+}
 
 .tabular {
   font-variant-numeric: tabular-nums;

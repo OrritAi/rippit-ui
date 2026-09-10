@@ -121,7 +121,7 @@ export default function InboxPage() {
                         <span aria-hidden="true" className="h-9 w-[6px] flex-none rounded-[3px]" style={{ background: bar }} />
                         <AppPuck app={conn?.id ?? it.provider} color={conn?.brandColor} size={22} />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[12.5px] font-semibold text-t1">{it.card?.name ?? `${conn?.shortLabel ?? it.provider} ${it.refId}`}</span>
+                          <span className="block [overflow-wrap:anywhere] text-[12.5px] font-semibold text-t1">{it.card?.name ?? `${conn?.shortLabel ?? it.provider} ${it.refId}`}</span>
                           <span className="mt-[1px] block text-[11px] leading-[1.45] text-t2">
                             {it.reason}
                             {it.when ? <span className="text-t3"> · {relativeTime(it.when)}</span> : null}

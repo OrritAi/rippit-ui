@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchLinks, type LinkMap } from "@/app/lib/api";
+import { BOOT_LINES, useBoot } from "@/components/app/BootProvider";
 import { useConnections, useWorkflowIndex } from "@/components/app/ConnectionsProvider";
 import { ErrorCard } from "@/components/shared/ErrorCard";
 import { LoadingState } from "@/components/shared/LoadingState";
@@ -14,11 +15,10 @@ import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useHydrated } from "@/lib/stored";
 import { ArcPanel, NodePanel } from "./DetailPanels";
 import { GlobeTooltip } from "./GlobeTooltip";
-import { INTRO, readBooted, writeBooted } from "./intro";
+import { INTRO } from "./intro";
 import { buildGlobeModel } from "./model";
 import { paletteFor } from "./palette";
 import { PlatformsPanel } from "./PlatformsPanel";
-import { BootOverlay } from "./BootOverlay";
 import { useGlobeRenderer, type Hover, type Sel } from "./useGlobeRenderer";
 
 /*
@@ -27,14 +27,27 @@ import { useGlobeRenderer, type Hover, type Sel } from "./useGlobeRenderer";
  * shell keeps its rail and search bar; this view adds the standard 46px bar
  * with the fleet counts and a Live pill that only says "Live" while the link
  * map is actually fresh.
+ *
+ * On a landing the app's boot screen is still up when this mounts: the view
+ * claims it, keeps it there until the estate has arrived, then assembles the
+ * globe underneath as the cover lifts (BootProvider has the contract,
+ * intro.ts the timeline). Reached from inside the app it simply renders.
  */
 
 const POLL_MS = 60_000;
 const FRESH_MS = 120_000;
+/** Longest the boot screen waits for an estate before giving up on the intro. */
 const INTRO_SAFETY_MS = 6_000;
 
 type LinksStatus = "pending" | "ok" | "error";
 type BootPhase = "pending" | "intro" | "static";
+interface IntroClock {
+  /** Origin of the intro clock (performance.now() domain). */
+  t0: number;
+  /** How far the clock had run when the DOM entrances mounted; their delays
+   *  subtract it so they land on the timeline rather than after it. */
+  offsetMs: number;
+}
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -45,6 +58,7 @@ export function WorkflowGlobe({ intro = true }: { intro?: boolean }) {
   const hydrated = useHydrated();
   const { resolvedTheme } = useTheme();
   const palette = hydrated && resolvedTheme ? paletteFor(resolvedTheme) : null;
+  const { claim, start, release, setLine } = useBoot();
 
   /* ─── Link map: seeded from context, kept fresh by a light poll ────── */
   const [links, setLinks] = useState<{ map: LinkMap | null; at: number | null; status: LinksStatus }>({
@@ -89,6 +103,7 @@ export function WorkflowGlobe({ intro = true }: { intro?: boolean }) {
   const linkMap = links.map;
   const model = useMemo(() => buildGlobeModel({ linkMap, index, connections }), [linkMap, index, connections]);
   const hasNodes = model.nodes.length > 0;
+  const workflows = model.counts.workflows;
 
   /* ─── View state ───────────────────────────────────────────────────── */
   const [hover, setHover] = useState<Hover | null>(null);
@@ -108,44 +123,54 @@ export function WorkflowGlobe({ intro = true }: { intro?: boolean }) {
   }, [model]);
 
   /* ─── Boot / intro ─────────────────────────────────────────────────── */
+  // A landing hands this view the boot screen (the claim succeeds); the
+  // intro plays only then, and never under reduced motion.
   const [bootPhase, setBootPhase] = useState<BootPhase>("pending");
-  const [booting, setBooting] = useState(false);
-  const [entered, setEntered] = useState(false);
-  const bootTimer = useRef<number | null>(null);
+  const [clock, setClock] = useState<IntroClock | null>(null);
+  const ownsBoot = useRef(false);
+  const cued = useRef(false);
   useEffect(() => {
-    const forced = window.location.search.includes("intro=1");
-    const play = intro && !reduced && (forced || !readBooted());
-    setBootPhase(play ? "intro" : "static");
-    setBooting(play);
+    ownsBoot.current = claim();
+    if (ownsBoot.current) setLine(BOOT_LINES.connecting);
+    setBootPhase(intro && !reduced && ownsBoot.current ? "intro" : "static");
+    return () => {
+      // Left before the estate arrived (a rail click through the cover):
+      // the screen must not stay up over the next view.
+      if (ownsBoot.current && !cued.current) release();
+    };
     // Decided once per mount on purpose.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const onIntroStart = useCallback(() => {
-    setEntered(true);
-    bootTimer.current = window.setTimeout(() => {
-      setBooting(false);
-      writeBooted();
-    }, INTRO.overlayFadeAtMs);
-  }, []);
-  useEffect(() => () => {
-    if (bootTimer.current) clearTimeout(bootTimer.current);
-  }, []);
-  // Safety valve: never leave the cover up over an estate that has nothing
-  // to assemble (empty, still loading, or failed).
+  // The moment there is an estate to assemble, cue the cover: the intro takes
+  // its clock from the boot screen (whose fade is t = 1.0s); a static globe
+  // just lifts it. Nothing to assemble — empty, failed, or still loading past
+  // the safety valve — ends the boot too, so the state underneath can be seen.
   useEffect(() => {
-    if (bootPhase !== "intro" || hasNodes) return;
-    const settled = !connectionsLoading && (connections.length === 0 || links.status === "error" || (links.status === "ok" && !hasNodes));
-    if (settled) {
-      setBootPhase("static");
-      setBooting(false);
+    if (bootPhase === "pending" || cued.current) return;
+    if (hasNodes) {
+      cued.current = true;
+      if (bootPhase === "intro") {
+        const t0 = start(BOOT_LINES.indexing(workflows));
+        setClock({ t0, offsetMs: performance.now() - t0 });
+      } else if (ownsBoot.current) {
+        release();
+      }
       return;
     }
-    const t = window.setTimeout(() => {
+    const settle = () => {
+      cued.current = true;
       setBootPhase("static");
-      setBooting(false);
-    }, INTRO_SAFETY_MS);
+      if (ownsBoot.current) release();
+    };
+    const settled =
+      !connectionsLoading && (connections.length === 0 || links.status === "error" || (links.status === "ok" && !hasNodes));
+    if (settled) {
+      settle();
+      return;
+    }
+    const t = window.setTimeout(settle, INTRO_SAFETY_MS);
     return () => clearTimeout(t);
-  }, [bootPhase, hasNodes, connectionsLoading, connections.length, links.status]);
+  }, [bootPhase, hasNodes, workflows, connectionsLoading, connections.length, links.status, start, release]);
 
   const playingIntro = bootPhase === "intro";
   const { wrapRef, canvasRef } = useGlobeRenderer({
@@ -153,10 +178,10 @@ export function WorkflowGlobe({ intro = true }: { intro?: boolean }) {
     palette,
     reduced,
     intro: playingIntro,
+    introT0: clock ? clock.t0 : null,
     view: { hover, sel, filter },
     onHover: setHover,
     onSelect: setSel,
-    onIntroStart,
   });
 
   /* ─── Derived chrome ───────────────────────────────────────────────── */
@@ -179,7 +204,9 @@ export function WorkflowGlobe({ intro = true }: { intro?: boolean }) {
   const linksPending = !linkMap && links.status !== "error" && !noConnections;
   const emptyEstate = !!linkMap && !hasNodes && !noConnections;
   const covered = bootPhase === "pending" || !palette;
-  const showChrome = hasNodes && (!playingIntro || entered);
+  // DOM entrances ride the intro clock; nothing enters before it has started.
+  const entrance = playingIntro && !reduced && clock ? (atMs: number) => Math.max(0, atMs - clock.offsetMs) : null;
+  const showChrome = hasNodes && (!playingIntro || clock !== null);
   const selNode = sel && sel.type === "node" ? model.nodes[sel.i] : null;
   const selArc = sel && sel.type === "arc" ? model.arcs[sel.i] : null;
   const hoverNode = hover ? model.nodes[hover.i] : null;
@@ -216,7 +243,7 @@ export function WorkflowGlobe({ intro = true }: { intro?: boolean }) {
             open={panelOpen}
             onToggle={() => setPanelOpen((v) => !v)}
             palette={palette}
-            animate={playingIntro && !reduced}
+            enterDelayMs={entrance ? entrance(INTRO.panelDelayMs) : null}
           />
         )}
         {selNode && <NodePanel node={selNode} onClose={() => setSel(null)} />}
@@ -224,7 +251,7 @@ export function WorkflowGlobe({ intro = true }: { intro?: boolean }) {
         {showChrome && (
           <div
             className="pointer-events-none absolute bottom-[14px] right-4 z-[4] font-mono text-[11.5px] text-t3"
-            style={playingIntro && !reduced ? { animation: `riseIn 450ms var(--ease-out) ${INTRO.hintDelayMs}ms both` } : undefined}
+            style={entrance ? { animation: `riseIn 450ms var(--ease-out) ${entrance(INTRO.hintDelayMs)}ms both` } : undefined}
           >
             drag to rotate · scroll to zoom
           </div>
@@ -274,7 +301,6 @@ export function WorkflowGlobe({ intro = true }: { intro?: boolean }) {
           </div>
         )}
 
-        <BootOverlay show={booting} workflows={counts.workflows} />
         {covered && <div aria-hidden="true" className="absolute inset-0 z-30 bg-bg" />}
       </div>
     </div>

@@ -48,7 +48,7 @@ export function SurveyStructureView({ structure }: { structure: SurveyStructure 
                       {q.options.map((opt, i) => (
                         <li key={i} className="flex items-center gap-2 text-[12px] text-t2">
                           <span aria-hidden="true" className="size-1 flex-none rounded-full bg-t3" />
-                          <span className="min-w-0 flex-1 truncate">{opt.label}</span>
+                          <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{opt.label}</span>
                           {opt.logic && <LogicBadge action={opt.logic.action} target={opt.logic.target} />}
                         </li>
                       ))}

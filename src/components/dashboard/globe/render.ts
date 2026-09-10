@@ -206,7 +206,7 @@ export function drawGlobe(ctx: CanvasRenderingContext2D, f: Frame): Hits {
     }
     // Labels on-globe: incidents only, front-facing, collision-culled.
     if (model.labeled.has(i) && p[2] > 0.4 && i !== f.hoverIdx) {
-      const text = n.name.length > 26 ? n.name.slice(0, 25) + "…" : n.name;
+      const text = n.name;
       const tw = ctx.measureText(text).width;
       const bx = sx + 9;
       const by = sy - 8;

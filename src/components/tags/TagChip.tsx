@@ -26,8 +26,8 @@ export function TagChip({
   const accent = tagAccent(tag);
   const inner = (
     <>
-      <span aria-hidden="true" className="size-[6px] rounded-full" style={{ background: accent }} />
-      <span className="truncate">{tag.name}</span>
+      <span aria-hidden="true" className="size-[6px] flex-none rounded-full" style={{ background: accent }} />
+      <span className="min-w-0 text-left [overflow-wrap:anywhere]">{tag.name}</span>
       {onRemove && (
         <button
           type="button"

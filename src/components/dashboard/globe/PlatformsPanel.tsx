@@ -1,10 +1,7 @@
 "use client";
 
-import { INTRO } from "./intro";
 import type { GlobePlatform } from "./model";
 import { platformColor, type CanvasPalette, type MarkerShape } from "./palette";
-
-const ENTRANCE = `riseIn 450ms var(--ease-out) ${INTRO.panelDelayMs}ms both`;
 
 function Marker({ shape, color }: { shape: MarkerShape; color: string }) {
   const base = "size-2 flex-none";
@@ -38,7 +35,7 @@ function Row({
       }`}
     >
       {marker}
-      <span className="flex-1 truncate text-left">{label}</span>
+      <span className="min-w-0 flex-1 text-left [overflow-wrap:anywhere]">{label}</span>
       <span className="tabular font-mono text-[10.5px] text-t3">{count}</span>
     </button>
   );
@@ -53,7 +50,7 @@ export function PlatformsPanel({
   open,
   onToggle,
   palette,
-  animate,
+  enterDelayMs,
 }: {
   platforms: GlobePlatform[];
   total: number;
@@ -63,13 +60,13 @@ export function PlatformsPanel({
   open: boolean;
   onToggle: () => void;
   palette: CanvasPalette;
-  /** Play the delayed entrance (first load only). */
-  animate: boolean;
+  /** Delay of the first-load entrance in ms; null → no entrance. */
+  enterDelayMs: number | null;
 }) {
   return (
     <div
       className="absolute left-4 top-4 z-[5] flex max-h-[calc(100%-60px)] w-[224px] flex-col rounded-card border border-line bg-pill shadow-[var(--shadow-card)]"
-      style={animate ? { animation: ENTRANCE } : undefined}
+      style={enterDelayMs === null ? undefined : { animation: `riseIn 450ms var(--ease-out) ${enterDelayMs}ms both` }}
     >
       <button
         type="button"

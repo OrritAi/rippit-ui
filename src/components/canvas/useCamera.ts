@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 /*
  * Canvas camera — the pan/zoom state and the pointer/wheel/keyboard
- * mechanics shared by DOM-node canvases. Extracted from ScenarioCanvas so
- * the Martech canvas can reuse fit / zoom / pan-with-inertia / centre-on
- * without inheriting the workflow layout.
+ * mechanics shared by DOM-node canvases (the system map and the Martech
+ * canvas): fit / zoom / pan-with-inertia / centre-on, independent of any
+ * one layout.
  *
  * The hook owns no node knowledge: `centerOn` takes world coordinates and
  * node presses are reported by id, so the caller decides what a click means.

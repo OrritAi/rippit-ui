@@ -16,9 +16,9 @@ import { StageNode } from "./nodes/StageNode";
 
 /*
  * Martech canvas — the funnel as one picture: pages left → right, and under
- * each page its assets, pixel facet and automations. Same shell as
- * ScenarioCanvas (sr-only list → viewport → world → SVG edges → label pills
- * → absolute nodes); the camera is the shared useCamera hook, the placement
+ * each page its assets, pixel facet and automations. Shell: sr-only list →
+ * viewport → world → SVG edges → label pills → absolute nodes; the camera
+ * is the shared useCamera hook, the placement
  * is layoutMartech. Keyboard: Tab reaches nodes (roving tabindex,
  * column-major), ↑/↓ move within a column, ←/→ across columns, Enter opens;
  * with the viewport focused arrows pan and + / − / F zoom / fit.
@@ -309,7 +309,7 @@ export function MartechCanvas({
                 return (
                   <div
                     key={`l${id}`}
-                    className="pointer-events-none absolute max-w-[160px] -translate-x-1/2 -translate-y-1/2 truncate rounded-full border px-2 py-[2px] text-[10px] font-semibold shadow-[var(--shadow-card)]"
+                    className="pointer-events-none absolute w-max max-w-[160px] -translate-x-1/2 -translate-y-1/2 [overflow-wrap:anywhere] rounded-full border px-2 py-[2px] text-center text-[10px] font-semibold shadow-[var(--shadow-card)]"
                     style={{
                       left: mx,
                       top: my,

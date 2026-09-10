@@ -8,7 +8,7 @@ import type { CanvasPalette } from "./palette";
 import { drawGlobe, type Hits } from "./render";
 
 /*
- * Owns the canvas: DPR sizing, the single rAF loop, the intro clock, and all
+ * Owns the canvas: DPR sizing, the single rAF loop, the intro's elapsed time, and all
  * pointer / wheel / keyboard input. Camera state (rot, tilt, zoom, drag) lives
  * in refs because it changes every frame; React state is reserved for what
  * the DOM needs (hover, selection, filter), which the parent owns and mirrors
@@ -37,12 +37,13 @@ export interface GlobeRendererOptions {
   reduced: boolean;
   /** Play the assembly intro on this mount (parent has already gated it). */
   intro: boolean;
+  /** Origin of the intro clock (performance.now() domain), null until the
+   *  estate is in — the canvas stays blank behind the cover until then. */
+  introT0: number | null;
   autoRotate?: boolean;
   view: GlobeView;
   onHover: (h: Hover | null) => void;
   onSelect: (sel: Sel | null) => void;
-  /** Fires once, the frame the intro clock starts (data has arrived). */
-  onIntroStart?: () => void;
 }
 
 interface Drag {
@@ -73,7 +74,6 @@ export function useGlobeRenderer(opts: GlobeRendererOptions) {
   const dragRef = useRef<Drag | null>(null);
   const hitsRef = useRef<Hits>({ nodes: [], arcs: [] });
   const fontRef = useRef("ui-monospace, monospace");
-  const t0Ref = useRef<number | null>(null);
   const introDoneRef = useRef(false);
   const lastRef = useRef(0);
   const rafRef = useRef(0);
@@ -91,16 +91,13 @@ export function useGlobeRenderer(opts: GlobeRendererOptions) {
     const { w, h } = sizeRef.current;
     let el = INTRO_DONE;
     if (o.intro && !introDoneRef.current) {
-      if (t0Ref.current === null) {
-        if (o.model.nodes.length === 0) {
-          // Nothing to assemble yet: keep the canvas blank behind the overlay.
-          ctx.clearRect(0, 0, w, h);
-          return;
-        }
-        t0Ref.current = nowMs;
-        o.onIntroStart?.();
+      if (o.introT0 === null) {
+        // Nothing to assemble yet: keep the canvas blank behind the cover.
+        ctx.clearRect(0, 0, w, h);
+        hitsRef.current = { nodes: [], arcs: [] };
+        return;
       }
-      el = (nowMs - t0Ref.current) / 1000;
+      el = (nowMs - o.introT0) / 1000;
       if (el > INTRO.doneAt) {
         introDoneRef.current = true;
         el = INTRO_DONE;

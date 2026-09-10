@@ -11,6 +11,10 @@ import { useEscape } from "@/components/shell/shell-context";
  * in on open and returns to the previously focused element on close; Esc
  * closes via the shell's escape layers (so dialogs/palette win first).
  * Under 720px it becomes a bottom sheet.
+ *
+ * `inline` renders the same dialog as a plain full-height column instead of
+ * a floating card — for hosts that reserve a right slot for it (the workflow
+ * map's 322px sidebar slot), where the slot itself animates open and closed.
  */
 export function DockHost({
   label,
@@ -20,6 +24,7 @@ export function DockHost({
   onClose,
   footer,
   dockKey,
+  inline = false,
 }: {
   label: string;
   width?: number;
@@ -29,6 +34,8 @@ export function DockHost({
   onClose: () => void;
   /** Changing the key re-runs the focus-in (new occupant). */
   dockKey: string;
+  /** Fill a host-provided slot instead of floating over the canvas. */
+  inline?: boolean;
 }) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -50,7 +57,11 @@ export function DockHost({
       role="dialog"
       aria-label={label}
       aria-describedby={titleId}
-      className="anim-pop-in absolute bottom-[10px] right-[10px] top-[10px] z-[6] flex max-w-[calc(100%-20px)] flex-col overflow-hidden rounded-card border border-line bg-pill shadow-[var(--shadow-float)] max-[720px]:left-[10px] max-[720px]:top-auto max-[720px]:max-h-[62%] max-[720px]:w-auto"
+      className={
+        inline
+          ? "wm-slidein flex h-full flex-col overflow-hidden"
+          : "anim-pop-in absolute bottom-[10px] right-[10px] top-[10px] z-[6] flex max-w-[calc(100%-20px)] flex-col overflow-hidden rounded-card border border-line bg-pill shadow-[var(--shadow-float)] max-[720px]:left-[10px] max-[720px]:top-auto max-[720px]:max-h-[62%] max-[720px]:w-auto"
+      }
       style={{ width }}
     >
       <div id={titleId} className="flex flex-none items-center gap-2.5 border-b border-line2 px-3.5 pb-2.5 pt-3">
@@ -77,8 +88,8 @@ export function DockTitle({ title, subtitle, icon }: { title: string; subtitle?:
     <>
       {icon && <span className="flex-none text-t3">{icon}</span>}
       <span className="min-w-0">
-        <span className="block truncate text-[13.5px] font-semibold leading-tight">{title}</span>
-        {subtitle && <span className="tabular block truncate font-mono text-[9.5px] text-t3">{subtitle}</span>}
+        <span className="block text-[13.5px] font-semibold leading-tight [overflow-wrap:anywhere]">{title}</span>
+        {subtitle && <span className="tabular block font-mono text-[9.5px] text-t3 [overflow-wrap:anywhere]">{subtitle}</span>}
       </span>
     </>
   );

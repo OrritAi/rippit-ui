@@ -107,7 +107,7 @@ export function FeedList({ rows, empty }: { rows: FeedRow[]; empty: React.ReactN
                 {r.who ? <span className="font-semibold">{r.who} — </span> : null}
                 {r.text}
               </span>
-              <span className="tabular mt-[2px] block truncate font-mono text-[9.5px] text-t3">
+              <span className="tabular mt-[2px] block [overflow-wrap:anywhere] font-mono text-[9.5px] text-t3">
                 {r.sub}
                 {r.when ? ` · ${relativeTime(r.when)}` : ""}
               </span>

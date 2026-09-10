@@ -30,7 +30,7 @@ export function InboxPanel() {
               icon={g.icon}
               tone={g.tone}
               title={it.card?.name ?? `${it.provider} ${it.refId}`}
-              sub={`${it.reason.length > 48 ? `${it.reason.slice(0, 46)}…` : it.reason}${it.when ? ` · ${relativeTime(it.when)}` : ""}`}
+              sub={`${it.reason}${it.when ? ` · ${relativeTime(it.when)}` : ""}`}
             />
           ))}
         </PanelSection>

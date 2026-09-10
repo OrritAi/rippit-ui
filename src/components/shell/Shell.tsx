@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { IconRail } from "./IconRail";
 import { AnimatePresence, motion } from "framer-motion";
 import { SidePanel, panelFor } from "./SidePanel";
 import { isTypingTarget, overlayOpen, useShell } from "./shell-context";
+import { useStoredJson, writeStored } from "@/lib/stored";
 import { usePalette } from "@/components/palette/palette-context";
 
 /*
@@ -31,6 +32,12 @@ function useMediaQuery(q: string): boolean {
   return m;
 }
 
+const PANEL_WIDTH_KEY = "rippit.panelWidth";
+const PANEL_DEFAULT = 206;
+const PANEL_MIN = 180;
+const PANEL_MAX = 560;
+const clampWidth = (w: number) => Math.min(PANEL_MAX, Math.max(PANEL_MIN, Math.round(Number.isFinite(w) ? w : PANEL_DEFAULT)));
+
 export function Shell({ children }: { children: React.ReactNode }) {
   const { railOpen, setRailOpen, toggleRail, fireEscape } = useShell();
   const palette = usePalette();
@@ -44,6 +51,57 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const narrow = useMediaQuery("(max-width: 1100px)");
   const available = !!panelFor(pathname).Component;
   const show = railOpen && available;
+
+  /* ---- resizable browser column ---- */
+  const storedWidth = useStoredJson<number>(PANEL_WIDTH_KEY, PANEL_DEFAULT);
+  const panelWidth = clampWidth(storedWidth);
+  const [resizing, setResizing] = useState(false);
+  const resizeRef = useRef<{ x: number; w: number; raf: number } | null>(null);
+  const onResizeStart = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const el = e.currentTarget;
+      el.setPointerCapture(e.pointerId);
+      resizeRef.current = { x: e.clientX, w: panelWidth, raf: 0 };
+      setResizing(true);
+      const move = (ev: PointerEvent) => {
+        const r = resizeRef.current;
+        if (!r) return;
+        const next = clampWidth(r.w + (ev.clientX - r.x));
+        if (r.raf) return;
+        r.raf = requestAnimationFrame(() => {
+          r.raf = 0;
+          writeStored(PANEL_WIDTH_KEY, next);
+        });
+      };
+      const up = (ev: PointerEvent) => {
+        const r = resizeRef.current;
+        if (r) writeStored(PANEL_WIDTH_KEY, clampWidth(r.w + (ev.clientX - r.x)));
+        resizeRef.current = null;
+        setResizing(false);
+        el.removeEventListener("pointermove", move);
+        el.removeEventListener("pointerup", up);
+        el.removeEventListener("pointercancel", up);
+        if (el.hasPointerCapture(ev.pointerId)) el.releasePointerCapture(ev.pointerId);
+      };
+      el.addEventListener("pointermove", move);
+      el.addEventListener("pointerup", up);
+      el.addEventListener("pointercancel", up);
+    },
+    [panelWidth]
+  );
+  const onResizeKey = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const step = e.shiftKey ? 48 : 16;
+      if (e.key === "ArrowLeft") writeStored(PANEL_WIDTH_KEY, clampWidth(panelWidth - step));
+      else if (e.key === "ArrowRight") writeStored(PANEL_WIDTH_KEY, clampWidth(panelWidth + step));
+      else if (e.key === "Home") writeStored(PANEL_WIDTH_KEY, PANEL_DEFAULT);
+      else return;
+      e.preventDefault();
+    },
+    [panelWidth]
+  );
 
   // Overlay browser closes when you navigate.
   useEffect(() => {
@@ -83,18 +141,36 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <motion.div
             key="panel"
             initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 206, opacity: 1 }}
+            animate={{ width: panelWidth, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.28, ease: EASE }}
+            transition={{ duration: resizing ? 0 : 0.28, ease: EASE }}
             className="relative h-full flex-none overflow-hidden"
           >
             <SidePanel />
+            {/* Resize handle: drag (or arrow keys) to set the browser's width;
+                the choice persists per viewer. */}
+            {/* The WAI-ARIA window-splitter pattern is a focusable separator
+                that takes pointer + arrow keys; the a11y rule cannot see the
+                role's interactive variant. */}
+            {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize side panel"
+              aria-valuemin={PANEL_MIN}
+              aria-valuemax={PANEL_MAX}
+              aria-valuenow={panelWidth}
+              tabIndex={0}
+              onPointerDown={onResizeStart}
+              onKeyDown={onResizeKey}
+              className={`absolute inset-y-0 right-0 z-10 w-[6px] cursor-col-resize select-none touch-none outline-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-line after:transition-colors hover:after:bg-line-strong focus-visible:after:bg-line-strong ${resizing ? "after:bg-line-strong" : ""}`}
+            />
           </motion.div>
         )}
         {show && narrow && (
           <motion.div key="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} className="fixed inset-0 z-20">
             <button type="button" aria-label="Close side panel" onClick={() => setRailOpen(false)} className="absolute inset-0 bg-[color-mix(in_srgb,var(--bg)_55%,transparent)]" />
-            <motion.div initial={{ x: -24 }} animate={{ x: 0 }} exit={{ x: -24 }} transition={{ duration: 0.24, ease: EASE }} className="absolute inset-y-0 left-[52px] z-30 shadow-[var(--shadow-float)]">
+            <motion.div initial={{ x: -24 }} animate={{ x: 0 }} exit={{ x: -24 }} transition={{ duration: 0.24, ease: EASE }} className="absolute inset-y-0 left-[52px] z-30 shadow-[var(--shadow-float)]" style={{ width: panelWidth }}>
               <SidePanel />
             </motion.div>
           </motion.div>

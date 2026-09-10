@@ -55,6 +55,24 @@ const CHECKS = [
   ["light --ok graphic on --bg (non-text)", "#16a34a", LIGHT_BG, 3],
   ["light --warn graphic on --bg (non-text)", "#d97706", LIGHT_BG, 3],
   ["light --err graphic on --bg (non-text)", "#dc2626", LIGHT_BG, 3],
+  // Workflow map accent (src/components/workflowMap): rings/edges are
+  // graphic, chip text and filter hits are text.
+  ["dark --map-accent on --bg (non-text)", "#0ea5e9", DARK_BG, 3],
+  ["dark --map-accent-text on --bg", "#0ea5e9", DARK_BG, 4.5],
+  ["light --map-accent on --bg (non-text)", "#0284c7", LIGHT_BG, 3],
+  ["light --map-accent-text on --bg", "#0369a1", LIGHT_BG, 4.5],
+  // Workflow pill surface: color-mix(in srgb, --map-accent 6%, --pill) — the
+  // expandable-node tint. Text on it must stay readable in both themes.
+  ["dark --text on pill tint (accent 6% over #101014)", "#f4f4f5", "#101921", 4.5],
+  ["dark pill tint border (accent 28% over #101014, non-text)", "#0ea5e9", "#101921", 3],
+  ["light --text on pill tint (accent 6% over #ffffff)", "#18181b", "#f0f8fc", 4.5],
+  ["light pill tint border (accent 28% over #ffffff, non-text)", "#0284c7", "#f0f8fc", 3],
+  // Viewed workflow pill — the FSM start state: solid --text fill, name and
+  // chip in --bg, double ring --bg / --text over the canvas.
+  ["dark --bg name on viewed pill (--text fill)", DARK_BG, "#f4f4f5", 4.5],
+  ["dark viewed pill outer ring --text on --vpbg (non-text)", "#f4f4f5", "#0b0b0e", 3],
+  ["light --bg name on viewed pill (--text fill)", LIGHT_BG, "#18181b", 4.5],
+  ["light viewed pill outer ring --text on --vpbg (non-text)", "#18181b", "#f1f1f3", 3],
   // Globe canvas palette (src/components/dashboard/globe/palette.ts) — the
   // canvas can't read tokens, so these literals are what it actually paints.
   ["globe dark ghl on --bg (non-text)", "#4cc3fa", DARK_BG, 3],

@@ -12,6 +12,7 @@ import { CoverageChips } from "./CoverageChips";
 import { MartechCanvas } from "./MartechCanvas";
 import { MartechInspector } from "./MartechInspector";
 import { MartechLegend } from "./MartechLegend";
+import { ExpandableText } from "@/components/shared/ExpandableText";
 
 const DOCK_W = 340;
 
@@ -49,14 +50,14 @@ export function MartechView({
 
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <div className="flex h-[46px] flex-none items-center gap-2.5 border-b border-line px-3">
+      <div className="flex min-h-[46px] flex-none items-center gap-2.5 border-b border-line px-3 py-1.5">
         <Link href={backHref} className="flex size-[26px] flex-none items-center justify-center rounded-control text-t3 transition-colors hover:bg-hover hover:text-t1" aria-label="Back to Martech">
           <ArrowLeft aria-hidden="true" className="size-3.5" />
         </Link>
-        <h1 className="min-w-0 truncate text-[13.5px] font-semibold tracking-[-0.01em]" title={graph.funnel.name}>
-          {graph.funnel.name}
+        <h1 className="min-w-0 text-[13.5px] font-semibold tracking-[-0.01em]">
+          <ExpandableText text={graph.funnel.name} lines={1} />
         </h1>
-        {graph.funnel.accountLabel && <span className="hidden truncate text-[11.5px] text-t3 md:inline">{graph.funnel.accountLabel}</span>}
+        {graph.funnel.accountLabel && <span className="hidden min-w-0 [overflow-wrap:anywhere] text-[11.5px] text-t3 md:inline">{graph.funnel.accountLabel}</span>}
         <div className="flex-1" />
         <CoverageChips coverage={graph.coverage} compact className="hidden lg:inline-flex" />
         <span className="tabular hidden font-mono text-[10.5px] text-t3 sm:inline" title={captured ?? undefined}>
