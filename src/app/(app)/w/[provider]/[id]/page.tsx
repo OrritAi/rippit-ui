@@ -338,6 +338,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
         stepRequest={stepRequest}
         onStepParam={setStepParam}
         onSelectNode={onSelectNode}
+        onSelectEdge={onSelectNode}
         rightSlot={rightSlot}
         marks={marks}
       />

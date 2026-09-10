@@ -442,6 +442,72 @@ body {
   stroke-dasharray: 6 7;
   animation-duration: 1s, 0.35s;
 }
+/* Interactive edges: the invisible hit path, and the hot look on hover /
+   keyboard focus / selection of a whole connection group (CSS only). */
+.wm-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+  outline: none;
+}
+.wm-group:hover .wm-edge,
+.wm-group:has(.wm-hit:focus-visible) .wm-edge {
+  stroke: var(--map-accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 7;
+  stroke-opacity: 1;
+  animation-duration: 1s, 0.35s;
+}
+/* A selected connection: its focused pairing lit, the rest of its group
+   readable, every other edge dimmed with its drift paused. Hover on a dimmed
+   edge only lifts it — it never competes with the focused pair. */
+.wm-edge-focus {
+  stroke: var(--map-accent) !important;
+  stroke-width: 2 !important;
+  stroke-dasharray: 6 7 !important;
+  stroke-opacity: 1 !important;
+  animation-duration: 1s, 0.35s !important;
+}
+/* Edges outside the selected connection stay legible (owner: 18% vanished
+   on the dot grid) — a quiet grey, still clearly secondary to the accent. */
+.wm-edge-groupd {
+  stroke-opacity: 0.75;
+}
+.wm-edge-dim {
+  stroke: var(--text) !important;
+  stroke-opacity: 0.22;
+  animation-play-state: paused;
+}
+.wm-group:hover .wm-edge-dim {
+  stroke-width: 1.5;
+  stroke-opacity: 0.45;
+  animation-play-state: running;
+}
+.wm-group:hover .wm-edge-groupd {
+  stroke-opacity: 0.8;
+}
+/* Pairing focus on the two nodes: a shape-following accent outline with a
+   soft glow and one 500 ms pulse on change (two identical keyframes so a
+   re-focus can restart the animation by swapping the name). */
+@keyframes wm-pairpulse-0 {
+  from { box-shadow: 0 0 0 5px color-mix(in srgb, var(--map-accent) 45%, transparent), 0 0 28px color-mix(in srgb, var(--map-accent) 45%, transparent); }
+  to { box-shadow: 0 0 0 1.5px var(--map-accent), 0 0 16px color-mix(in srgb, var(--map-accent) 35%, transparent); }
+}
+@keyframes wm-pairpulse-1 {
+  from { box-shadow: 0 0 0 5px color-mix(in srgb, var(--map-accent) 45%, transparent), 0 0 28px color-mix(in srgb, var(--map-accent) 45%, transparent); }
+  to { box-shadow: 0 0 0 1.5px var(--map-accent), 0 0 16px color-mix(in srgb, var(--map-accent) 35%, transparent); }
+}
+.wm-pair {
+  box-shadow: 0 0 0 1.5px var(--map-accent), 0 0 16px color-mix(in srgb, var(--map-accent) 35%, transparent) !important;
+}
+.wm-pair[data-pulse="0"] {
+  animation: wm-pairpulse-0 0.5s var(--ease-out) both;
+}
+.wm-pair[data-pulse="1"] {
+  animation: wm-pairpulse-1 0.5s var(--ease-out) both;
+}
 .wm-pulse {
   position: absolute;
   left: 0;

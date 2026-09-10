@@ -43,6 +43,7 @@ export const WorkflowPill = memo(function WorkflowPill({
   onClick,
   onToggle,
   far = false,
+  pair = null,
 }: {
   node: MapNode;
   selected: boolean;
@@ -52,6 +53,8 @@ export const WorkflowPill = memo(function WorkflowPill({
   onToggle: (node: MapNode) => void;
   /** Zoomed out: hide the meta line. */
   far?: boolean;
+  /** Pairing focus attributes (class + data-pulse + data-pair) or null. */
+  pair?: { className: string; "data-pulse": string; "data-pair": "source" | "target" } | null;
 }) {
   const p = node.pill;
   const open = !!p?.open;
@@ -106,7 +109,9 @@ export const WorkflowPill = memo(function WorkflowPill({
       <div
         ref={nodeRef}
         data-node-id={node.id}
-        className={`flex min-h-10 flex-none items-center gap-[9px] rounded-full border border-[var(--pill-border)] bg-pill py-1.5 pl-[9px] pr-1.5 shadow-[var(--shadow-card)] transition-[border-color,background,transform,box-shadow] duration-[220ms] ease-[var(--ease-out)] hover:-translate-y-[2px] ${viewed ? "text-bg" : "text-t1 hover:border-line-strong"}`}
+        data-pair={pair?.["data-pair"]}
+        data-pulse={pair?.["data-pulse"]}
+        className={`${pair ? "wm-pair " : ""}pointer-events-auto flex min-h-10 flex-none items-center gap-[9px] rounded-full border border-[var(--pill-border)] bg-pill py-1.5 pl-[9px] pr-1.5 shadow-[var(--shadow-card)] transition-[border-color,background,transform,box-shadow] duration-[220ms] ease-[var(--ease-out)] hover:-translate-y-[2px] ${viewed ? "text-bg" : "text-t1 hover:border-line-strong"}`}
         style={
           {
             "--pill-border": borderColor,

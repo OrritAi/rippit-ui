@@ -33,6 +33,7 @@ export const StepNode = memo(function StepNode({
   onClick,
   srNote,
   far = false,
+  pair = null,
 }: {
   node: MapNode;
   selected: boolean;
@@ -42,6 +43,8 @@ export const StepNode = memo(function StepNode({
   /** Screen-reader-only annotation ("changed since you last looked", …). */
   srNote?: string | null;
   far?: boolean;
+  /** Pairing focus attributes (class + data-pulse + data-pair) or null. */
+  pair?: { className: string; "data-pulse": string; "data-pair": "source" | "target" } | null;
 }) {
   const name = node.hit ? "text-map-accent-text" : "text-t1";
   /* Never an ellipsis on the map: an API summary that trails off ("… / …")
@@ -66,7 +69,9 @@ export const StepNode = memo(function StepNode({
           title={node.name}
           aria-label={srNote ? `${node.name} — ${srNote}` : node.name}
           onClick={() => onClick(node)}
-          className="flex cursor-pointer select-none rounded-[12px] transition-[box-shadow,transform] duration-200 ease-[var(--ease-out)] hover:-translate-y-[2px]"
+          data-pair={pair?.["data-pair"]}
+          data-pulse={pair?.["data-pulse"]}
+          className={`${pair ? "wm-pair " : ""}pointer-events-auto flex cursor-pointer select-none rounded-[12px] transition-[box-shadow,transform] duration-200 ease-[var(--ease-out)] hover:-translate-y-[2px]`}
           style={{ boxShadow: selected ? RING : undefined }}
         >
           <AppPuck app={node.app} size={FAR_TILE} radius={12} />
@@ -79,7 +84,9 @@ export const StepNode = memo(function StepNode({
       <div
         ref={nodeRef}
         data-node-id={node.id}
-        className="group/card relative w-full rounded-card border bg-pill shadow-[var(--shadow-card)] transition-[box-shadow,transform,border-color] duration-200 ease-[var(--ease-out)] hover:-translate-y-[2px] hover:border-line-strong"
+        data-pair={pair?.["data-pair"]}
+        data-pulse={pair?.["data-pulse"]}
+        className={`${pair ? "wm-pair " : ""}group/card pointer-events-auto relative w-full rounded-card border bg-pill shadow-[var(--shadow-card)] transition-[box-shadow,transform,border-color] duration-200 ease-[var(--ease-out)] hover:-translate-y-[2px] hover:border-line-strong`}
         style={{
           boxShadow: selected ? RING : undefined,
           borderColor: selected ? "color-mix(in srgb, var(--map-accent) 55%, transparent)" : "var(--line)",

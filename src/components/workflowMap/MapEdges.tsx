@@ -1,7 +1,16 @@
 "use client";
 
-import { memo, useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type KeyboardEvent,
+} from "react";
+import type { EdgeInfo } from "@/lib/workflowMap/edgeGroups";
 import { EDGE_TWEEN_MS } from "@/lib/workflowMap/tokens";
+import { MapTip } from "./MapTip";
 import type { MapEdge } from "./useMapMeasure";
 
 /*
@@ -33,13 +42,32 @@ import type { MapEdge } from "./useMapMeasure";
  * coordinates are set directly. New edges fade in via `.wm-edge`'s second
  * keyframe. `lite` drops the pulses; `paused` freezes the ambience while
  * the tab is hidden.
+ *
+ * Interaction: every visible path has an invisible 14px hit path beside it
+ * (`data-hit`, `pointer-events: stroke`, role=button, tab-reachable) inside
+ * `<g data-edge>`; a trunk and its stubs share one `<g data-group>`. Hover
+ * and keyboard focus light the whole group through CSS alone
+ * (`.wm-group:hover`, no React state) and show a tooltip with the
+ * connection's label; click / Enter / Space call `onSelectEdge`, and the
+ * selected group keeps the hot look via `data-selected`. Hit paths carry no
+ * data-from/to, so geometry scripts never read them.
  */
 
 const NUM = /-?\d+(?:\.\d+)?/g;
 /** A bezier `M … C …` parses to exactly 8 numbers; anything else is an elbow. */
-const parse = (d: string) => (d.includes(" C ") ? (d.match(NUM) ?? []).map(Number) : []);
-const format = (n: number[]) => `M ${n[0]} ${n[1]} C ${n[2]} ${n[3]}, ${n[4]} ${n[5]}, ${n[6]} ${n[7]}`;
+const parse = (d: string) =>
+  d.includes(" C ") ? (d.match(NUM) ?? []).map(Number) : [];
+const format = (n: number[]) =>
+  `M ${n[0]} ${n[1]} C ${n[2]} ${n[3]}, ${n[4]} ${n[5]}, ${n[6]} ${n[7]}`;
 const easeOut = (t: number) => 1 - (1 - t) ** 3;
+const HIT_STYLE = {
+  fill: "none",
+  stroke: "transparent",
+  strokeWidth: 14,
+  pointerEvents: "stroke",
+  cursor: "pointer",
+  outline: "none",
+} as const;
 
 interface Tween {
   from: number[];
@@ -54,6 +82,10 @@ export const MapEdges = memo(function MapEdges({
   paused,
   track,
   zoom,
+  infoOf,
+  selectedGroup,
+  focusedEdge,
+  onSelectEdge,
 }: {
   edges: MapEdge[];
   selectedId: string | null;
@@ -64,9 +96,18 @@ export const MapEdges = memo(function MapEdges({
   /** Coordinates are zoom-independent (inner space), but a measurement that
    *  lands with a new zoom is set directly, never tweened. */
   zoom: number;
+  /** Per-edge connection info (group key + label), from `groupEdges`. */
+  infoOf: ReadonlyMap<string, EdgeInfo>;
+  /** The selected connection group, if any. */
+  selectedGroup: string | null;
+  /** The focused pairing inside it: that stub (+ its trunk) renders hot, the
+   *  rest of the group at 45 %, everything else dimmed to 18 %. */
+  focusedEdge: string | null;
+  onSelectEdge: (edgeKey: string) => void;
 }) {
   const lastZoom = useRef(zoom);
   const paths = useRef(new Map<string, SVGPathElement>());
+  const hits = useRef(new Map<string, SVGPathElement>());
   const pulses = useRef(new Map<string, HTMLDivElement>());
   /** Last drawn geometry per key: the bezier numbers (8) or the raw d. */
   const shown = useRef(new Map<string, { nums: number[]; d: string }>());
@@ -77,6 +118,7 @@ export const MapEdges = memo(function MapEdges({
     const d = nums.length === 8 ? format(nums) : (raw ?? "");
     shown.current.set(key, { nums, d });
     paths.current.get(key)?.setAttribute("d", d);
+    hits.current.get(key)?.setAttribute("d", d);
     const pulse = pulses.current.get(key);
     if (pulse) pulse.style.offsetPath = `path("${d}")`;
   }, []);
@@ -91,7 +133,7 @@ export const MapEdges = memo(function MapEdges({
         const e = easeOut(t);
         apply(
           key,
-          tw.to.map((v, i) => tw.from[i] + (v - tw.from[i]) * e)
+          tw.to.map((v, i) => tw.from[i] + (v - tw.from[i]) * e),
         );
         if (t >= 1) tweens.current.delete(key);
       }
@@ -121,8 +163,10 @@ export const MapEdges = memo(function MapEdges({
       }
       tweens.current.set(e.key, { from: cur.nums, to, t0: now });
     }
-    for (const key of [...shown.current.keys()]) if (!live.has(key)) shown.current.delete(key);
-    for (const key of [...tweens.current.keys()]) if (!live.has(key)) tweens.current.delete(key);
+    for (const key of [...shown.current.keys()])
+      if (!live.has(key)) shown.current.delete(key);
+    for (const key of [...tweens.current.keys()])
+      if (!live.has(key)) tweens.current.delete(key);
     if (tweens.current.size > 0) startLoop();
   }, [edges, track, zoom, apply, startLoop]);
 
@@ -138,7 +182,17 @@ export const MapEdges = memo(function MapEdges({
         if (cur) el.setAttribute("d", cur.d);
       } else paths.current.delete(key);
     },
-    []
+    [],
+  );
+  const hitRef = useCallback(
+    (key: string) => (el: SVGPathElement | null) => {
+      if (el) {
+        hits.current.set(key, el);
+        const cur = shown.current.get(key);
+        if (cur) el.setAttribute("d", cur.d);
+      } else hits.current.delete(key);
+    },
+    [],
   );
   const pulseRef = useCallback(
     (key: string) => (el: HTMLDivElement | null) => {
@@ -148,49 +202,143 @@ export const MapEdges = memo(function MapEdges({
         if (cur) el.style.offsetPath = `path("${cur.d}")`;
       } else pulses.current.delete(key);
     },
-    []
+    [],
   );
 
   const play = paused ? { animationPlayState: "paused" as const } : undefined;
   /* A trunk is hot when any of its stubs is (parent or one child selected). */
   const hotTrunks = new Set<string>();
-  if (selectedId != null) for (const e of edges) if (e.stub && (e.from === selectedId || e.to === selectedId)) hotTrunks.add(e.stub);
-  const hot = (e: MapEdge) => selectedId != null && (e.kind === "trunk" ? hotTrunks.has(e.key) : e.from === selectedId || e.to === selectedId);
+  if (selectedId != null)
+    for (const e of edges)
+      if (e.stub && (e.from === selectedId || e.to === selectedId))
+        hotTrunks.add(e.stub);
+  const hot = (e: MapEdge) =>
+    selectedId != null &&
+    (e.kind === "trunk"
+      ? hotTrunks.has(e.key)
+      : e.from === selectedId || e.to === selectedId);
+  /* Connection selection: the focused pair's route (its stub + trunk, or the
+     edge itself) is hot, the rest of the group stays readable, everything
+     else dims. */
+  const focusedStub = focusedEdge ? edges.find((m) => m.key === focusedEdge)?.stub : undefined;
+  const focusState = (e: MapEdge): string => {
+    if (!selectedGroup) return "";
+    const gk = infoOf.get(e.key)?.group ?? e.key;
+    if (gk !== selectedGroup) return " wm-edge-dim";
+    if (!focusedEdge) return " wm-edge-groupd";
+    const onRoute = e.key === focusedEdge || (e.kind === "trunk" && focusedStub === e.key);
+    return onRoute ? " wm-edge-focus" : " wm-edge-groupd";
+  };
+  /* Group order = first-seen order of the edge list. */
+  const groups = new Map<string, MapEdge[]>();
+  for (const e of edges) {
+    const gk = infoOf.get(e.key)?.group ?? e.key;
+    (groups.get(gk) ?? groups.set(gk, []).get(gk)!).push(e);
+  }
+  const onHitKey = (e: KeyboardEvent<SVGPathElement>, key: string) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onSelectEdge(key);
+    }
+  };
   return (
     <>
-      <svg aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 h-full w-full overflow-visible">
+      <svg
+        aria-hidden="false"
+        className="pointer-events-none absolute inset-0 z-0 h-full w-full overflow-visible"
+      >
         <defs>
-          <marker id="wm-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto" markerUnits="userSpaceOnUse">
+          <marker
+            id="wm-arrow"
+            viewBox="0 0 8 8"
+            refX="7"
+            refY="4"
+            markerWidth="7"
+            markerHeight="7"
+            orient="auto"
+            markerUnits="userSpaceOnUse"
+          >
             <path d="M 1 1 L 7 4 L 1 7 Z" fill="var(--driftc)" />
           </marker>
-          <marker id="wm-arrow-hot" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto" markerUnits="userSpaceOnUse">
+          <marker
+            id="wm-arrow-hot"
+            viewBox="0 0 8 8"
+            refX="7"
+            refY="4"
+            markerWidth="8"
+            markerHeight="8"
+            orient="auto"
+            markerUnits="userSpaceOnUse"
+          >
             <path d="M 1 1 L 7 4 L 1 7 Z" fill="var(--map-accent)" />
           </marker>
         </defs>
-        {edges.map((e) => (
-          <path
-            key={e.key}
-            ref={pathRef(e.key)}
-            data-edge={e.key}
-            data-from={e.kind === "trunk" ? undefined : e.from}
-            data-to={e.kind === "trunk" ? undefined : e.to}
-            data-trunk={e.kind === "trunk" ? e.key : undefined}
-            data-stub={e.stub}
-            data-fanin={e.fanIn ? "true" : undefined}
-            data-kind={e.kind}
-            data-anchor={e.anchor}
-            d={e.d}
-            markerEnd={e.kind === "jump" ? `url(#${hot(e) ? "wm-arrow-hot" : "wm-arrow"})` : undefined}
-            className={`wm-edge${e.depth === 0 && e.kind === "tree" && !e.anchor ? " wm-edge-root" : ""}${e.fan ? " wm-edge-fan" : ""}${e.anchor === "v" ? " wm-edge-chain" : ""}${e.kind === "join" ? " wm-edge-join" : ""}${e.kind === "jump" ? " wm-edge-jump" : ""}${hot(e) ? " wm-edge-hot" : ""}`}
-            style={play}
-          />
+        {[...groups].map(([gk, members]) => (
+          <g
+            key={gk}
+            data-group={gk}
+            data-selected={selectedGroup === gk ? "true" : undefined}
+            className="wm-group"
+          >
+            {members.map((e) => {
+              const info = infoOf.get(e.key);
+              const label = info?.label ?? `${e.from} → ${e.to}`;
+              return (
+                <g key={e.key} data-edge={e.key}>
+                  <path
+                    ref={pathRef(e.key)}
+                    data-edge={e.key}
+                    data-from={e.kind === "trunk" ? undefined : e.from}
+                    data-to={e.kind === "trunk" ? undefined : e.to}
+                    data-trunk={e.kind === "trunk" ? e.key : undefined}
+                    data-stub={e.stub}
+                    data-fanin={e.fanIn ? "true" : undefined}
+                    data-kind={e.kind}
+                    data-anchor={e.anchor}
+                    d={e.d}
+                    markerEnd={
+                      e.kind === "jump"
+                        ? `url(#${hot(e) ? "wm-arrow-hot" : "wm-arrow"})`
+                        : undefined
+                    }
+                    className={`wm-edge${e.depth === 0 && e.kind === "tree" && !e.anchor ? " wm-edge-root" : ""}${e.fan ? " wm-edge-fan" : ""}${e.anchor === "v" ? " wm-edge-chain" : ""}${e.kind === "join" ? " wm-edge-join" : ""}${e.kind === "jump" ? " wm-edge-jump" : ""}${hot(e) ? " wm-edge-hot" : ""}${focusState(e)}`}
+                    style={play}
+                  />
+                  <MapTip label={label}>
+                    <path
+                      ref={hitRef(e.key)}
+                      d={e.d}
+                      data-hit="true"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Connection: ${label}`}
+                      className="wm-hit"
+                      /* Inline so the hit area exists even before the stylesheet
+                         updates (dev HMR can lag on globals.css). */
+                      style={HIT_STYLE}
+                      onClick={() => onSelectEdge(e.key)}
+                      onKeyDown={(ev) => onHitKey(ev, e.key)}
+                    />
+                  </MapTip>
+                </g>
+              );
+            })}
+          </g>
         ))}
       </svg>
       {!lite &&
         selectedId != null &&
         edges
           .filter(hot)
-          .map((e) => <div key={e.key} ref={pulseRef(e.key)} aria-hidden="true" className="wm-pulse" style={{ offsetPath: `path("${e.d}")`, ...play }} />)}
+          .map((e) => (
+            <div
+              key={e.key}
+              ref={pulseRef(e.key)}
+              aria-hidden="true"
+              className="wm-pulse"
+              style={{ offsetPath: `path("${e.d}")`, ...play }}
+            />
+          ))}
     </>
   );
 });

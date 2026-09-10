@@ -1,7 +1,17 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { CHILD_GAP_DEEP, CHILD_GAP_ROOT, DEEP_SPACER, FAN_AT, FAN_SPACER, ROOT_SPACER, STAGGER_CAP_MS, STAGGER_MS, TALL_COLUMN_AT } from "@/lib/workflowMap/tokens";
+import {
+  CHILD_GAP_DEEP,
+  CHILD_GAP_ROOT,
+  DEEP_SPACER,
+  FAN_AT,
+  FAN_SPACER,
+  ROOT_SPACER,
+  STAGGER_CAP_MS,
+  STAGGER_MS,
+  TALL_COLUMN_AT,
+} from "@/lib/workflowMap/tokens";
 import type { MapNode } from "@/lib/workflowMap/types";
 import { StepNode } from "./StepNode";
 import { WorkflowPill } from "./WorkflowPill";
@@ -30,6 +40,10 @@ import type { TreeItemProps } from "./useMapKeyboard";
 
 export interface TreeCtx {
   selectedId: string | null;
+  /** Pairing focus from the connection panel: the source and target of the
+   *  focused pair wear a shape-following outline; `pairTick` restarts the pulse. */
+  pairRoleOf: (id: string) => "source" | "target" | null;
+  pairTick: number;
   lite: boolean;
   /** True for ~650 ms after a toggle — fresh children columns get will-change. */
   unfolding: boolean;
@@ -54,16 +68,35 @@ export interface TreeCtx {
   isFreshGroup: (parentId: string) => boolean;
 }
 
-const delay = (i: number): CSSProperties => ({ animationDelay: `${Math.min(i * STAGGER_MS, STAGGER_CAP_MS)}ms` });
+const delay = (i: number): CSSProperties => ({
+  animationDelay: `${Math.min(i * STAGGER_MS, STAGGER_CAP_MS)}ms`,
+});
 
-function Row({ node, index, depth, ctx }: { node: MapNode; index: number; depth: number; ctx: TreeCtx }) {
+function Row({
+  node,
+  index,
+  depth,
+  ctx,
+}: {
+  node: MapNode;
+  index: number;
+  depth: number;
+  ctx: TreeCtx;
+}) {
   const root = depth === 0;
   const selected = node.id === ctx.selectedId;
+  const pair = ctx.pairRoleOf(node.id);
+  const pairProps = pair ? { className: "wm-pair", "data-pulse": String(ctx.pairTick % 2), "data-pair": pair } : null;
   const anim = ctx.lite ? "" : root ? "wm-rise" : "wm-branch";
   const kids = node.children;
   const joins = node.joins;
-  const weight = kids.reduce((n, k) => n + 1 + k.descendants, 0) + joins.reduce((n, j) => n + 1 + j.descendants, 0);
-  const tall = weight >= TALL_COLUMN_AT || kids.some((k) => k.children.length > 0 || k.joins.length > 0) || joins.length > 0;
+  const weight =
+    kids.reduce((n, k) => n + 1 + k.descendants, 0) +
+    joins.reduce((n, j) => n + 1 + j.descendants, 0);
+  const tall =
+    weight >= TALL_COLUMN_AT ||
+    kids.some((k) => k.children.length > 0 || k.joins.length > 0) ||
+    joins.length > 0;
   const fan = kids.length >= FAN_AT;
   /* Band vs join column: centred against each other while both are short;
      once the join column carries a real subtree (the shared step usually
@@ -71,7 +104,8 @@ function Row({ node, index, depth, ctx }: { node: MapNode; index: number; depth:
      stay near the parent instead of the band sinking to the middle of a
      very tall join column. */
   const joinWeight = joins.reduce((n, j) => n + 1 + j.descendants, 0);
-  const innerAlign = joinWeight >= TALL_COLUMN_AT ? "items-start" : "items-center";
+  const innerAlign =
+    joinWeight >= TALL_COLUMN_AT ? "items-start" : "items-center";
   /* Top-aligned: a 40px pill against a ~70px first card sits 15px down so
      the centres meet; card-on-card and anything-on-pill need no nudge. */
   const nudge = tall && node.pill && !kids[0].pill && !ctx.far ? 15 : 0;
@@ -83,7 +117,15 @@ function Row({ node, index, depth, ctx }: { node: MapNode; index: number; depth:
     >
       {node.pill ? (
         <div style={nudge ? { marginTop: nudge } : undefined}>
-          <WorkflowPill node={node} selected={selected} itemProps={ctx.itemProps(node)} nodeRef={ctx.refFor(node.id)} onClick={ctx.onClick} onToggle={ctx.onToggle} far={ctx.far} />
+          <WorkflowPill
+            node={node}
+            selected={selected} pair={pairProps}
+            itemProps={ctx.itemProps(node)}
+            nodeRef={ctx.refFor(node.id)}
+            onClick={ctx.onClick}
+            onToggle={ctx.onToggle}
+            far={ctx.far}
+          />
         </div>
       ) : (
         <StepNode
@@ -93,12 +135,17 @@ function Row({ node, index, depth, ctx }: { node: MapNode; index: number; depth:
           nodeRef={ctx.refFor(node.id)}
           onClick={ctx.onClick}
           srNote={ctx.srNoteFor?.(node)}
-          far={ctx.far}
+          far={ctx.far} pair={pairProps}
         />
       )}
       {(kids.length > 0 || joins.length > 0) && (
         <>
-          <div className="flex-none" style={{ width: fan ? FAN_SPACER : root ? ROOT_SPACER : DEEP_SPACER }} />
+          <div
+            className="flex-none"
+            style={{
+              width: fan ? FAN_SPACER : root ? ROOT_SPACER : DEEP_SPACER,
+            }}
+          />
           <div className={`flex ${innerAlign}`}>
             {kids.length > 0 && (
               <div
@@ -106,20 +153,42 @@ function Row({ node, index, depth, ctx }: { node: MapNode; index: number; depth:
                 className="flex flex-col"
                 style={{
                   gap: root ? CHILD_GAP_ROOT : CHILD_GAP_DEEP,
-                  willChange: ctx.unfolding && ctx.isFreshGroup(node.id) ? "transform, opacity" : undefined,
+                  willChange:
+                    ctx.unfolding && ctx.isFreshGroup(node.id)
+                      ? "transform, opacity"
+                      : undefined,
                 }}
               >
                 {kids.map((c, i) => (
-                  <Row key={c.id} node={c} index={i} depth={depth + 1} ctx={ctx} />
+                  <Row
+                    key={c.id}
+                    node={c}
+                    index={i}
+                    depth={depth + 1}
+                    ctx={ctx}
+                  />
                 ))}
               </div>
             )}
             {joins.length > 0 && (
               <>
-                {kids.length > 0 && <div className="flex-none" style={{ width: DEEP_SPACER }} />}
-                <div role="group" aria-label="Shared steps" className="flex flex-col" style={{ gap: CHILD_GAP_DEEP }}>
+                {kids.length > 0 && (
+                  <div className="flex-none" style={{ width: DEEP_SPACER }} />
+                )}
+                <div
+                  role="group"
+                  aria-label="Shared steps"
+                  className="flex flex-col"
+                  style={{ gap: CHILD_GAP_DEEP }}
+                >
                   {joins.map((j, i) => (
-                    <Row key={j.id} node={j} index={i} depth={depth + 1} ctx={ctx} />
+                    <Row
+                      key={j.id}
+                      node={j}
+                      index={i}
+                      depth={depth + 1}
+                      ctx={ctx}
+                    />
                   ))}
                 </div>
               </>
@@ -136,10 +205,15 @@ function TopRows({ rows, ctx }: { rows: MapNode[]; ctx: TreeCtx }) {
     <>
       {rows.map((r, i) =>
         ctx.near !== null && !ctx.near.has(r.id) ? (
-          <div key={r.id} ref={ctx.placeholderRefFor(r.id)} aria-hidden="true" style={{ height: ctx.heightOf(r.id) }} />
+          <div
+            key={r.id}
+            ref={ctx.placeholderRefFor(r.id)}
+            aria-hidden="true"
+            style={{ height: ctx.heightOf(r.id) }}
+          />
         ) : (
           <Row key={r.id} node={r} index={i} depth={0} ctx={ctx} />
-        )
+        ),
       )}
     </>
   );
@@ -157,7 +231,15 @@ function TopRows({ rows, ctx }: { rows: MapNode[]; ctx: TreeCtx }) {
 const PILL_H = 40;
 const META_H = 18;
 
-export function MapTree({ roots, callers, ctx }: { roots: MapNode[]; callers: MapNode[]; ctx: TreeCtx }) {
+export function MapTree({
+  roots,
+  callers,
+  ctx,
+}: {
+  roots: MapNode[];
+  callers: MapNode[];
+  ctx: TreeCtx;
+}) {
   if (callers.length === 0) {
     return (
       <div className="flex flex-col gap-[44px]">
@@ -165,16 +247,29 @@ export function MapTree({ roots, callers, ctx }: { roots: MapNode[]; callers: Ma
       </div>
     );
   }
-  const short = callers.length <= 3 && callers.every((c) => !c.pill?.open && c.children.length === 0);
-  const blockH = callers.length * PILL_H + (callers.length - 1) * CHILD_GAP_ROOT + callers.filter((c) => c.meta && !ctx.far).length * META_H;
+  const short =
+    callers.length <= 3 &&
+    callers.every((c) => !c.pill?.open && c.children.length === 0);
+  const blockH =
+    callers.length * PILL_H +
+    (callers.length - 1) * CHILD_GAP_ROOT +
+    callers.filter((c) => c.meta && !ctx.far).length * META_H;
   const nudge = short ? Math.max(0, Math.round((blockH - PILL_H) / 2)) : 0;
   return (
     <div className="flex items-start">
-      <div role="group" aria-label="Workflows that call this one" className="flex w-max flex-col" style={{ gap: CHILD_GAP_ROOT }}>
+      <div
+        role="group"
+        aria-label="Workflows that call this one"
+        className="flex w-max flex-col"
+        style={{ gap: CHILD_GAP_ROOT }}
+      >
         <TopRows rows={callers} ctx={ctx} />
       </div>
       <div className="flex-none" style={{ width: ROOT_SPACER }} />
-      <div className="flex flex-col gap-[44px]" style={nudge ? { marginTop: nudge } : undefined}>
+      <div
+        className="flex flex-col gap-[44px]"
+        style={nudge ? { marginTop: nudge } : undefined}
+      >
         <TopRows rows={roots} ctx={ctx} />
       </div>
     </div>

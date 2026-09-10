@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import type { ExecutionsResponse, ScenarioSummary, WorkflowCard } from "@/app/lib/api";
+import type { ExecutionsResponse, WorkflowCard } from "@/app/lib/api";
 import { getConnector } from "@/lib/connectors";
 import type { ProviderId } from "@/lib/connectors/types";
 import { appName } from "@/lib/apps";
@@ -22,11 +22,13 @@ import { nodeLink } from "./nodeLink";
 /*
  * MapSidebar — the 322px panel for the selected node. Only what informs:
  * header (puck · name · "App · #ordinal" · ×, plus a health line only when
- * something is wrong) → What it does → Issues (when any) → Runs (Make only,
- * when there is run data) → the step's own sections once its detail arrives
- * (trigger conditions, assets, survey structure) → Advanced details, folded.
- * No breadcrumb, no type/app rows, no placeholder sentences: the canvas
- * already shows where the node sits and what platform it is on.
+ * something is wrong) → actions → exception notes only (a "Go to" step's
+ * target with Show, a Make step's filter/wait, a pill whose steps Rippit
+ * cannot show, the changed/comments note) → Issues (when any) → Runs (Make
+ * only, when there is run data) → the step's own sections once its detail
+ * arrives (trigger conditions, assets, survey structure) → Advanced details,
+ * folded. No "What it does" prose: the card already carries the step
+ * summary, and a pill's name and status are on the pill.
  */
 
 export interface DetailState {
@@ -34,39 +36,11 @@ export interface DetailState {
   data?: unknown;
 }
 
-/* "Branch: A / B / C." renders as a wrapping list, never one cut line;
-   an API-side "…" tail is dropped (the label generator is being fixed). */
-function WhatItDoes({ text }: { text: string }) {
-  const m = /^(Branch(?:es)?|Routes?):\s*(.+?)\.?$/i.exec(text);
-  const items = m ? m[2].split(/\s*\/\s*/).map((t) => t.replace(/…$/, "").trim()).filter((t) => t && t !== "…") : null;
-  if (m && items && items.length > 1) {
-    return (
-      <div className="text-[12.5px] leading-[1.55] text-t1">
-        <div className="text-t2">{m[1]}</div>
-        <ul className="mt-1 list-disc space-y-0.5 pl-4 [overflow-wrap:anywhere]">
-          {items.map((it, i) => (
-            <li key={i}>{it}</li>
-          ))}
-        </ul>
-      </div>
-    );
-  }
-  return <div className="text-[12.5px] leading-[1.55] text-t1 [overflow-wrap:anywhere]">{text.replace(/\s*…\s*$/, ".")}</div>;
-}
-
-const sentence = (s: string) => {
-  const t = s.trim();
-  if (!t) return "";
-  const cap = t.charAt(0).toUpperCase() + t.slice(1);
-  return /[.!?]$/.test(cap) ? cap : `${cap}.`;
-};
-
 export function MapSidebar({
   node,
   viewed,
   runs,
   card,
-  summary,
   detail,
   onClose,
   note,
@@ -78,11 +52,9 @@ export function MapSidebar({
   runs: ExecutionsResponse | null;
   /** Link-map card for a pill's workflow. */
   card?: WorkflowCard;
-  /** Loaded summary for a pill's workflow (apps used). */
-  summary?: ScenarioSummary;
   detail: DetailState;
   onClose: () => void;
-  /** Extra mono line under "What it does" ("changed since you last looked · 2 open comments"). */
+  /** Extra mono line under the actions ("changed since you last looked · 2 open comments"). */
   note?: string | null;
   /** Select + centre a step of the same workflow (the jump target). */
   onShowStep?: (key: string, stepId: string) => void;
@@ -94,7 +66,7 @@ export function MapSidebar({
   const isPill = !!node.pill;
   const isStep = node.kind === "step" && !!node.module;
   const belongsToViewed = node.ref ? keyOf(node.ref) === viewedKey : node.stepRef?.key === viewedKey;
-  const detailLoaded = isStep && detail.status === "ok";
+  const detailLoaded = isStep && detail.status === "ok" && detail.data != null;
   const desc = detailLoaded ? connector.describeNode(detail.data) : null;
   const mod = node.module;
   const app = desc?.app ?? node.app;
@@ -117,27 +89,23 @@ export function MapSidebar({
   const link = nodeLink(node);
   const Sections = connector.DetailSections;
 
-  /* ---- What it does ---- */
-  let what: string;
+  /* ---- Exception notes: only what the canvas cannot show ---- */
+  const notes: string[] = [];
   if (isStep && mod) {
-    const base = desc?.summary || mod.summary || `${appName(app)} ${connector.nouns.step}`;
     const filter = desc?.filterName || mod.filterName;
     const wait = desc?.waitText || mod.waitFor?.text;
-    what = sentence(base) + (filter ? ` Only continues when ${filter}.` : mod.hasFilter ? " Has a filter." : "") + (wait ? ` Waits ${wait}.` : "");
+    if (filter) notes.push(`Only continues when ${filter}`);
+    else if (mod.hasFilter) notes.push("Has a filter");
+    if (wait) notes.push(`Waits ${wait}`);
   } else if (isPill) {
-    const status = node.status === "ok" ? "an active" : node.status === "off" ? "a paused" : "a";
-    const parts = [`${node.name} is ${status} ${connector.label} ${connector.nouns.workflow}.`];
-    if (summary?.appsUsed?.length) parts.push(`It uses ${summary.appsUsed.map(appName).join(", ")}.`);
-    for (const t of node.desc.split(" · ").slice(1)) parts.push(sentence(t));
     const p = node.pill;
-    if (p?.unavailable) parts.push("This connection exposes names and status only, not steps.");
-    else if (p?.error === "not-captured") parts.push(`Rippit has not captured this ${connector.nouns.workflow}'s steps yet.`);
-    else if (p?.error === "not-synced") parts.push(`This ${connector.nouns.workflow} is not synced into Rippit.`);
-    else if (p?.error === "fetch-failed") parts.push("Its steps could not be fetched just now.");
-    what = parts.join(" ");
-  } else {
-    what = sentence(node.desc) || "—";
+    if (p?.unavailable) notes.push("This connection exposes names and status only, not steps");
+    else if (p?.error === "not-captured") notes.push(`Rippit has not captured this ${connector.nouns.workflow}'s steps yet`);
+    else if (p?.error === "not-synced") notes.push(`This ${connector.nouns.workflow} is not synced into Rippit`);
+    else if (p?.error === "fetch-failed") notes.push("Its steps could not be fetched just now");
+    if (p?.link?.status === "dead") notes.push("The link into this workflow is dead");
   }
+  if (note) notes.push(note);
 
   return (
     <div className="thin-scroll wm-slidein box-border h-full w-[322px] overflow-auto px-4 pb-6 pt-4">
@@ -179,23 +147,27 @@ export function MapSidebar({
         )}
       </div>
 
-      <Section title="What it does">
-        {node.jumpTo ? (
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] leading-[1.55] text-t1">
-            <span className="[overflow-wrap:anywhere]">Continues at {node.jumpTo.targetName}</span>
-            {node.stepRef && onShowStep && (
-              <MapTip label="Select and centre the target step">
-                <Button variant="ghost" size="xs" onClick={() => onShowStep(node.stepRef!.key, node.jumpTo!.stepId)}>
-                  Show
-                </Button>
-              </MapTip>
-            )}
-          </div>
-        ) : (
-          <WhatItDoes text={what} />
-        )}
-        {note && <p className="mt-2 font-mono text-[10.5px] text-t3">{note}</p>}
-      </Section>
+      {(node.jumpTo || notes.length > 0) && (
+        <div className="mb-5 flex flex-col gap-1.5">
+          {node.jumpTo && (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] leading-[1.55] text-t1">
+              <span className="[overflow-wrap:anywhere]">Continues at {node.jumpTo.targetName}</span>
+              {node.stepRef && onShowStep && (
+                <MapTip label="Select and centre the target step">
+                  <Button variant="ghost" size="xs" onClick={() => onShowStep(node.stepRef!.key, node.jumpTo!.stepId)}>
+                    Show
+                  </Button>
+                </MapTip>
+              )}
+            </div>
+          )}
+          {notes.map((n) => (
+            <p key={n} className="font-mono text-[10.5px] leading-[1.5] text-t3 [overflow-wrap:anywhere]">
+              {n}
+            </p>
+          ))}
+        </div>
+      )}
 
       <IssuesSection issues={issues} onFindUses={(ref) => router.push(assetHref(ref.kind, ref.value))} />
 

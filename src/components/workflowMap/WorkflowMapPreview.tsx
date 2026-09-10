@@ -6,6 +6,7 @@ import type { WorkflowRef } from "@/lib/portals";
 import type { SummaryEntry, WorkflowKey } from "@/lib/workflowMap/types";
 import { PROTOTYPE, PROTOTYPE_NOW, big, tall } from "@/lib/workflowMap/fixtures/prototype";
 import type { SummaryStore } from "@/lib/workflowMap/summaryStore";
+import { useShell } from "@/components/shell/shell-context";
 import { WorkflowMapView } from "./WorkflowMap";
 
 /*
@@ -16,6 +17,20 @@ import { WorkflowMapView } from "./WorkflowMap";
  */
 
 const noop = () => undefined;
+
+/* The app shell owns the Escape key; the harness has no shell, so it
+   forwards Escape to the same stack (sidebar / edge selection close). */
+function EscapeBridge() {
+  const { fireEscape } = useShell();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && fireEscape()) e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fireEscape]);
+  return null;
+}
 
 const RUNS: ExecutionsResponse = {
   supported: true,
@@ -56,6 +71,7 @@ export function WorkflowMapPreview({ big: isBig, tall: tallN = 0, snapshot = nul
   }, []);
   return (
     <div className="flex h-full min-w-0 flex-col">
+      <EscapeBridge />
       <WorkflowMapView
         viewed={fixture.viewed}
         linkMap={fixture.linkMap}

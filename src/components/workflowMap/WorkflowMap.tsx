@@ -40,7 +40,9 @@ import {
   SIDEBAR_W,
 } from "@/lib/workflowMap/tokens";
 import type { MapNode, WorkflowRef } from "@/lib/workflowMap/types";
+import { groupEdges } from "@/lib/workflowMap/edgeGroups";
 import { MapEdges } from "./MapEdges";
+import { MapEdgeSidebar } from "./MapEdgeSidebar";
 import { MapMinimap } from "./MapMinimap";
 import { MapSidebar, type DetailState } from "./MapSidebar";
 import { MapToolbar } from "./MapToolbar";
@@ -102,6 +104,8 @@ export interface WorkflowMapViewProps {
   /** Selected viewed-workflow step id, or null — the host writes `?step`. */
   onStepParam?: (stepId: string | null) => void;
   onSelectNode?: (node: MapNode) => void;
+  /** A connection (edge) was selected — the host drops its dock tool. */
+  onSelectEdge?: () => void;
   /** Alternate occupant of the right slot (a dock tool, `DockHost inline`). */
   rightSlot?: ReactNode;
   marks?: MapMarks;
@@ -131,6 +135,7 @@ export function WorkflowMapView({
   stepRequest,
   onStepParam,
   onSelectNode,
+  onSelectEdge,
   rightSlot,
   marks,
   fetchDetail = defaultFetchDetail,
@@ -145,6 +150,14 @@ export function WorkflowMapView({
     initialExpanded(linkMap, viewed),
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /* A selected connection: its group, the focused pairing (an edge key)
+     and whether the focus came from the panel (pinned → node outlines). */
+  const [selectedEdge, setSelectedEdge] = useState<{
+    group: string;
+    edge: string;
+    pinned: boolean;
+  } | null>(null);
+  const [pairTick, setPairTick] = useState(0);
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [pendingStep, setPendingStep] = useState<string | null>(null);
@@ -279,6 +292,7 @@ export function WorkflowMapView({
   const select = useCallback(
     (node: MapNode | null) => {
       setSelectedId(node?.id ?? null);
+      setSelectedEdge(null);
       if (node) onSelectNode?.(node);
       const stepId =
         node &&
@@ -322,12 +336,15 @@ export function WorkflowMapView({
     },
     [model.byStep, clickNode],
   );
-  useEscape(selectedId != null, close);
+  useEscape(selectedId != null || selectedEdge != null, close);
 
   /* A dock tool took the slot: the sidebar yields. */
   const hasTool = rightSlot != null;
   useEffect(() => {
-    if (hasTool) setSelectedId(null);
+    if (hasTool) {
+      setSelectedId(null);
+      setSelectedEdge(null);
+    }
   }, [hasTool]);
 
   const expandAll = useCallback(() => {
@@ -433,11 +450,6 @@ export function WorkflowMapView({
           (w) => w.source === node.ref!.source && w.refId === node.ref!.refId,
         )
       : undefined;
-  const summaryFor = (node: MapNode) => {
-    if (!node.ref) return undefined;
-    const e = store.summaries.get(keyOf(node.ref));
-    return e?.state === "ok" ? e.summary : undefined;
-  };
 
   const noteFor = useCallback(
     (node: MapNode): string | null => {
@@ -460,8 +472,101 @@ export function WorkflowMapView({
 
   /* ---------- render ---------- */
 
+  /* Connection groups over the measured edges (hover labels, selection). */
+  const { groups: edgeGroups, infoOf: edgeInfo } = useMemo(
+    () => groupEdges(measure.edges, model.byId),
+    [measure.edges, model.byId],
+  );
+  const selectedGroup =
+    selectedEdge && edgeGroups.has(selectedEdge.group)
+      ? edgeGroups.get(selectedEdge.group)!
+      : null;
+  /* Canvas click: select the group, focus the clicked pairing, no outlines. */
+  const selectEdge = useCallback(
+    (edgeKey: string) => {
+      const info = edgeInfo.get(edgeKey);
+      if (!info) return;
+      const focus =
+        edgeGroups
+          .get(info.group)
+          ?.pairs.find((p) => p.from === info.from && p.to === info.to)
+          ?.edgeKey ?? edgeKey;
+      setSelectedEdge({ group: info.group, edge: focus, pinned: false });
+      setSelectedId(null);
+      onStepParam?.(null);
+      onSelectEdge?.();
+    },
+    [edgeInfo, edgeGroups, onStepParam, onSelectEdge],
+  );
+  const focusedPair = useMemo(
+    () =>
+      selectedGroup && selectedEdge
+        ? (selectedGroup.pairs.find((p) => p.edgeKey === selectedEdge.edge) ??
+          selectedGroup.pairs[0] ??
+          null)
+        : null,
+    [selectedGroup, selectedEdge],
+  );
+  /* Inner-space rect of a node element (for framing a pairing). */
+  const innerRectOf = useCallback(
+    (id: string) => {
+      const el = elementOf(id);
+      const inner = innerNode.current;
+      if (!el || !inner) return null;
+      const r = el.getBoundingClientRect();
+      const ir = inner.getBoundingClientRect();
+      const z = zoom || 1;
+      return {
+        x: (r.left - ir.left) / z,
+        y: (r.top - ir.top) / z,
+        w: r.width / z,
+        h: r.height / z,
+      };
+    },
+    [elementOf, zoom],
+  );
+  /* Panel click: focus a pairing — light its route, outline both nodes,
+     frame them (zoom 0.5–1, 60px padding), pulse once. */
+  const fitRect = camera.fitRect;
+  const focusPair = useCallback(
+    (edgeKey: string) => {
+      const info = edgeInfo.get(edgeKey);
+      if (!info) return;
+      setSelectedEdge({ group: info.group, edge: edgeKey, pinned: true });
+      setPairTick((t) => t + 1);
+      const a = innerRectOf(info.from);
+      const b = innerRectOf(info.to);
+      if (!a || !b) return;
+      const x = Math.min(a.x, b.x);
+      const y = Math.min(a.y, b.y);
+      fitRect(
+        {
+          x,
+          y,
+          w: Math.max(a.x + a.w, b.x + b.w) - x,
+          h: Math.max(a.y + a.h, b.y + b.h) - y,
+        },
+        { padding: 60, minZoom: 0.5, maxZoom: 1 },
+      );
+    },
+    [edgeInfo, innerRectOf, fitRect],
+  );
+  const pairRoleOf = useCallback(
+    (id: string): "source" | "target" | null => {
+      if (!selectedEdge?.pinned || !focusedPair) return null;
+      return focusedPair.from === id
+        ? "source"
+        : focusedPair.to === id
+          ? "target"
+          : null;
+    },
+    [selectedEdge, focusedPair],
+  );
+
   const ctx: TreeCtx = {
     selectedId,
+    pairRoleOf,
+    pairTick,
     lite,
     unfolding: measure.unfolding,
     itemProps: keyboard.itemProps,
@@ -478,7 +583,7 @@ export function WorkflowMapView({
     isFreshGroup,
   };
 
-  const slotOpen = selectedNode != null || hasTool;
+  const slotOpen = selectedNode != null || selectedGroup != null || hasTool;
   const filtering = debounced.trim().length > 0;
 
   return (
@@ -524,6 +629,10 @@ export function WorkflowMapView({
                     zoom={zoom}
                     edges={measure.edges}
                     selectedId={selectedId}
+                    infoOf={edgeInfo}
+                    selectedGroup={selectedGroup?.key ?? null}
+                    focusedEdge={focusedPair?.edgeKey ?? null}
+                    onSelectEdge={selectEdge}
                     track={measure.unfolding || lite || reduced}
                     lite={lite}
                     paused={!visible}
@@ -534,7 +643,7 @@ export function WorkflowMapView({
                   <div
                     role="tree"
                     aria-labelledby={headingId}
-                    className="relative z-[1] select-none"
+                    className="pointer-events-none relative z-[1] select-none"
                   >
                     <MapTree
                       roots={model.roots}
@@ -581,11 +690,19 @@ export function WorkflowMapView({
                   viewed={viewed}
                   runs={runs}
                   card={cardFor(selectedNode)}
-                  summary={summaryFor(selectedNode)}
                   detail={detail}
                   onClose={close}
                   onShowStep={showStep}
                   note={noteFor(selectedNode)}
+                />
+              ) : selectedGroup ? (
+                <MapEdgeSidebar
+                  key={selectedGroup.key}
+                  group={selectedGroup}
+                  focused={focusedPair}
+                  onFocusPair={focusPair}
+                  onOpen={clickNode}
+                  onClose={close}
                 />
               ) : (
                 rightSlot

@@ -51,6 +51,8 @@ export interface MapCamera {
   resetZoom: () => void;
   /** Fit the whole content in the viewport (never above 100 %). */
   fit: () => void;
+  /** Frame a content-space rect: zoom to fit it (clamped) and centre on it. */
+  fitRect: (rect: { x: number; y: number; w: number; h: number }, opts?: { padding?: number; minZoom?: number; maxZoom?: number }) => void;
   onPointerDown: (e: PointerEvent<HTMLDivElement>) => void;
   onPointerMove: (e: PointerEvent<HTMLDivElement>) => void;
   onPointerUp: (e: PointerEvent<HTMLDivElement>) => void;
@@ -214,6 +216,29 @@ export function useMapCamera({
     zoomTo(z, { cx: 0, cy: 0 });
   }, [scrollElement, innerElement, zoomTo]);
 
+  /* Frame a rect (inner coordinates): jump so its centre sits under the
+     viewport centre at the current zoom, then glide the zoom anchored at
+     that centre, which keeps it there. */
+  const fitRect = useCallback(
+    (rect: { x: number; y: number; w: number; h: number }, opts?: { padding?: number; minZoom?: number; maxZoom?: number }) => {
+      const sb = scrollElement();
+      if (!sb) return;
+      const padding = opts?.padding ?? 60;
+      const minZ = opts?.minZoom ?? ZOOM_MIN;
+      const maxZ = opts?.maxZoom ?? ZOOM_MAX;
+      const vw = sb.clientWidth;
+      const vh = sb.clientHeight;
+      const z = Math.min(maxZ, Math.max(minZ, Math.min(vw / (rect.w + 2 * padding), vh / (rect.h + 2 * padding))));
+      const cx = rect.x + rect.w / 2;
+      const cy = rect.y + rect.h / 2;
+      const z0 = zoomRef.current;
+      glide.current = null;
+      sb.scrollTo({ left: pad.current.x + cx * z0 - vw / 2, top: pad.current.y + cy * z0 - vh / 2, behavior: "instant" });
+      zoomTo(z, { cx: vw / 2, cy: vh / 2 });
+    },
+    [scrollElement, zoomTo]
+  );
+
   /* ---- wheel (non-passive, so zoom can cancel the native scroll) ---- */
 
   useEffect(() => {
@@ -348,5 +373,5 @@ export function useMapCamera({
     [zoomIn, zoomOut, resetZoom, fit]
   );
 
-  return { zoom, far: view.far, dragging, scrollElement, innerElement, padRef, zoomTo, zoomIn, zoomOut, resetZoom, fit, onPointerDown, onPointerMove, onPointerUp, onPointerAbort, onClickCapture, onKeyDown };
+  return { zoom, far: view.far, dragging, scrollElement, innerElement, padRef, zoomTo, zoomIn, zoomOut, resetZoom, fit, fitRect, onPointerDown, onPointerMove, onPointerUp, onPointerAbort, onClickCapture, onKeyDown };
 }
