@@ -53,9 +53,9 @@ export default function WorkflowPickerPage() {
               <p className="mb-1 text-[10.5px] font-semibold uppercase tracking-wide text-t3">Recent</p>
               <div className="flex flex-col">
                 {recent.map((r) => (
-                  <Link key={`${r.provider}:${r.id}`} href={`/w/${r.provider}/${r.id}`} className="flex h-8 items-center gap-2 rounded-row px-2 text-[13px] text-t2 transition-colors hover:bg-hover hover:text-t1">
-                    <Clock3 aria-hidden="true" className="size-3 text-t3" />
-                    <span className="truncate">{r.name}</span>
+                  <Link key={`${r.provider}:${r.id}`} href={`/w/${r.provider}/${r.id}`} className="flex min-h-8 items-center gap-2 rounded-row px-2 py-1 text-[13px] text-t2 transition-colors hover:bg-hover hover:text-t1">
+                    <Clock3 aria-hidden="true" className="size-3 flex-none text-t3" />
+                    <span className="min-w-0 [overflow-wrap:anywhere]">{r.name}</span>
                   </Link>
                 ))}
               </div>
@@ -66,9 +66,9 @@ export default function WorkflowPickerPage() {
               <p className="mb-1 text-[10.5px] font-semibold uppercase tracking-wide text-t3">Workflows</p>
               <div className="flex flex-col">
                 {suggestions.map((w) => (
-                  <Link key={`${w.provider}:${w.refId}`} href={workflowHref({ source: w.provider, refId: w.refId })} className="flex h-8 items-center gap-2 rounded-row px-2 text-[13px] text-t2 transition-colors hover:bg-hover hover:text-t1">
+                  <Link key={`${w.provider}:${w.refId}`} href={workflowHref({ source: w.provider, refId: w.refId })} className="flex min-h-8 items-center gap-2 rounded-row px-2 py-1 text-[13px] text-t2 transition-colors hover:bg-hover hover:text-t1">
                     <AppPuck app={w.provider} size={16} />
-                    <span className="truncate">{w.name}</span>
+                    <span className="min-w-0 [overflow-wrap:anywhere]">{w.name}</span>
                   </Link>
                 ))}
               </div>

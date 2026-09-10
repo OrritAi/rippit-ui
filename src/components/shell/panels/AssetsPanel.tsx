@@ -45,11 +45,11 @@ export function AssetsPanel() {
               type="button"
               onClick={() => writeStored(OPEN_KEY, { ...open, [kind]: !isOpen })}
               aria-expanded={isOpen}
-              className="flex h-[27px] w-full cursor-pointer items-center gap-1.5 rounded-row px-1.5 text-left transition-[background] duration-[var(--dur-fast)] hover:bg-hover"
+              className="flex min-h-[27px] w-full cursor-pointer items-center gap-1.5 rounded-row px-1.5 text-left transition-[background] duration-[var(--dur-fast)] hover:bg-hover"
             >
               <ChevronRight aria-hidden="true" className={`size-[10px] flex-none text-t3 transition-transform duration-[var(--dur-fast)] ${isOpen ? "rotate-90" : ""}`} />
               <KindIcon kind={kind} className="size-[11px] flex-none text-t3" />
-              <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-t2">{kindLabel(kind)}</span>
+              <span className="min-w-0 flex-1 [overflow-wrap:anywhere] text-[11.5px] font-medium text-t2">{kindLabel(kind)}</span>
               <span className="tabular font-mono text-[9px] text-t3">{n}</span>
             </button>
             {isOpen && (

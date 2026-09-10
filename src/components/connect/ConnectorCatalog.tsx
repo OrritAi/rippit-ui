@@ -305,7 +305,7 @@ export function ConnectorCatalog({
               <ConnectorGlyph connector={connector} />
               <div className="min-w-0 flex-1">
                 <p className="text-[14px] font-semibold">{connector.label}</p>
-                <p className="truncate text-[12px] text-t3">
+                <p className="[overflow-wrap:anywhere] text-[12px] text-t3">
                   {connector.description}
                 </p>
               </div>

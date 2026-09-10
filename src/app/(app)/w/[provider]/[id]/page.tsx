@@ -1,50 +1,47 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, use } from "react";
-import { useRouter, useSearchParams, notFound } from "next/navigation";
+import { useSearchParams, notFound } from "next/navigation";
 import Link from "next/link";
-import { Activity, HeartPulse, History, Info, MessageSquare, NotebookPen } from "lucide-react";
-import { fetchExecutions, fetchComments, fetchWorkflowChanges, markWorkflowSeen, setWatch } from "@/app/lib/api";
-import type { ExecutionsResponse, Issue, NodeId, Tag, WorkflowChanges } from "@/app/lib/api";
+import { MessageSquare } from "lucide-react";
+import { fetchExecutions, fetchComments, fetchWorkflowChanges, markWorkflowSeen } from "@/app/lib/api";
+import type { ExecutionsResponse, NodeId, WorkflowChanges } from "@/app/lib/api";
 import { getConnector, isProviderId } from "@/lib/connectors";
 import type { WorkflowData } from "@/lib/connectors/types";
-import { parsePortalId, withPortals, workflowHref, WorkflowRef } from "@/lib/portals";
+import { WorkflowRef } from "@/lib/portals";
 import { useConnections, useWorkflowIndex } from "@/components/app/ConnectionsProvider";
-import { useAuth } from "@/components/app/AuthProvider";
 import { usePaletteScope } from "@/components/palette/palette-context";
-import ScenarioCanvas from "@/components/canvas/ScenarioCanvas";
 import { ActionBar, type DockTool } from "@/components/canvas/ActionBar";
-import { ConnectedChips } from "@/components/canvas/ConnectedChips";
 import { CaptureNotice } from "@/components/shared/CaptureBadge";
 import { DockHost, DockTitle } from "@/components/canvas/DockHost";
-import { NodeInspector } from "@/components/canvas/NodeInspector";
-import { HealthBody } from "@/components/canvas/HealthBody";
-import { StatusLine } from "@/components/canvas/StatusLine";
-import { Legend } from "@/components/canvas/Legend";
+import { WorkflowMap, type StepRequest } from "@/components/workflowMap/WorkflowMap";
+import { SIDEBAR_W } from "@/lib/workflowMap/tokens";
 import { LoadingState } from "@/components/shared/LoadingState";
 import { ErrorCard } from "@/components/shared/ErrorCard";
-import { RunsBody, relativeTime } from "@/components/shared/RunsPanel";
-import { ChangesBody } from "@/components/shared/ChangesPanel";
+import { relativeTime } from "@/components/shared/RunsPanel";
+import { toast } from "sonner";
+import { useNow } from "@/hooks/useNow";
 import { CommentsThread } from "@/components/shared/CommentsSection";
-import { NotesBody, useWorkflowMeta } from "@/components/shared/OwnerNotes";
-import { InfoBody } from "@/components/shared/InfoPanel";
 import { writeStored, readStored, type RecentEntry } from "@/lib/stored";
 
 /*
- * Workflow canvas view: action bar · connected chips · banner slot · canvas
- * · status line · one right dock (node inspector | info | changes |
- * comments | runs | notes). `?step=` is the only URL state (opens the
- * inspector); `?node=` is read as an alias. Esc closes the dock.
+ * Workflow view: header · notice rows · the workflow map (callers unfold
+ * into the viewed workflow; nodes select into a 322px sidebar). The header
+ * carries Sync and Comments only; the Comments dock shares the map's right
+ * slot with the node sidebar — one occupant at a time. (Health, info,
+ * changes, runs and notes docks exist in the codebase but are not mounted
+ * here: the canvas is the page.)
+ * `?step=` is the only URL state (`?node=` is read as an alias): it selects
+ * that step of the viewed workflow; the palette and dock rows select
+ * through the same request. Esc closes whichever occupant is open.
  */
 export default function WorkflowPage({ params }: { params: Promise<{ provider: string; id: string }> }) {
   const { provider, id } = use(params);
   if (!isProviderId(provider)) notFound();
   const connector = getConnector(provider);
 
-  const router = useRouter();
   const searchParams = useSearchParams();
   const requestedStep = searchParams.get("step") ?? searchParams.get("node");
-  const { user } = useAuth();
   const { linkMap, connections } = useConnections();
   const index = useWorkflowIndex();
 
@@ -53,21 +50,16 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
 
-  // The single dock occupant.
+  // The right slot's tool occupant (the node sidebar is the map's own).
   const [tool, setTool] = useState<DockTool | null>(null);
-  const [selectedId, setSelectedId] = useState<NodeId | null>(null);
-  const [nodeDetail, setNodeDetail] = useState<unknown | null>(null);
-  const [nodeError, setNodeError] = useState(false);
-  const [nodeLoading, setNodeLoading] = useState(false);
+  // Step selection requests into the map (deep link, palette, dock rows).
+  const [stepRequest, setStepRequest] = useState<StepRequest | null>(() => (requestedStep ? { id: requestedStep, gen: 0 } : null));
 
   const [runs, setRuns] = useState<ExecutionsResponse | null>(null);
   const [changes, setChanges] = useState<WorkflowChanges | null>(null);
-  const [wfTags, setWfTags] = useState<Tag[] | null>(null);
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [wfOpenComments, setWfOpenComments] = useState(0);
   const [commentGen, setCommentGen] = useState(0);
-  const [zoom, setZoom] = useState(1);
-  const { meta: wfMeta, setMeta: setWfMeta } = useWorkflowMeta(provider, id);
 
   const self: WorkflowRef = useMemo(() => ({ source: provider, refId: id }), [provider, id]);
   const myCard = useMemo(() => linkMap?.workflows.find((w) => w.source === provider && w.refId === id) ?? null, [linkMap, provider, id]);
@@ -88,12 +80,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider, id, reloadKey]);
 
-  useEffect(() => {
-    if (myCard) setWfTags(myCard.tags ?? []);
-  }, [myCard]);
-
-  // Runs up front (Make): the canvas marks the failing module, the inspector
-  // shows workflow-level runtime, the action bar shows last run.
+  // Runs up front (Make): the sidebar shows workflow-level runtime and the
+  // failing step, the header shows last run.
   useEffect(() => {
     if (provider !== "make") return;
     let live = true;
@@ -148,7 +136,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
     };
   }, [provider, id, reloadKey]);
 
-  /* ---------- derived canvas data ---------- */
+  /* ---------- derived ---------- */
 
   const changedNodeIds = useMemo(() => {
     const s = new Set<string>();
@@ -161,117 +149,33 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
     return s;
   }, [changes]);
 
-  const runtimeIssueByNode = useMemo(() => {
-    const latest = runs?.executions?.[0];
-    if (!latest || latest.status !== "error" || !latest.causeModuleId) return new Map<string, Issue>();
-    return new Map<string, Issue>([
-      [
-        String(latest.causeModuleId),
-        {
-          code: "last-run-failed",
-          severity: "error",
-          provider,
-          workflowExternalId: id,
-          nodeId: latest.causeModuleId,
-          message: `Last run failed here${latest.errorMessage ? `: ${latest.errorMessage}` : ""}`,
-          data: { executionId: latest.executionId, startedAt: latest.startedAt, runtime: true },
-        },
-      ],
-    ]);
-  }, [runs, provider, id]);
-
-  // Everything the Health dock lists: structural issues from the sync plus
-  // the failing-module issue from the latest run, worst handled by the dock.
-  const healthIssues = useMemo(() => [...runtimeIssueByNode.values(), ...(data?.summary.issues ?? [])], [data, runtimeIssueByNode]);
 
   const capture = useMemo(
     () => linkMap?.workflows.find((w) => w.source === self.source && String(w.refId) === String(self.refId))?.capture,
     [linkMap, self]
   );
 
-  const canvasData = useMemo(() => {
-    if (!data) return null;
-    const base = withPortals(data.summary, linkMap, self);
-    const hasComments = Object.keys(commentCounts).length > 0;
-    if (runtimeIssueByNode.size === 0 && changedNodeIds.size === 0 && !hasComments) return base;
-    return {
-      ...base,
-      modules: base.modules.map((m) => {
-        const extra = runtimeIssueByNode.get(String(m.id));
-        const changed = changedNodeIds.has(String(m.id));
-        const cc = commentCounts[String(m.id)];
-        if (!extra && !changed && !cc) return m;
-        const existing = (m.issues ?? []).filter((i) => i.code !== "last-run-failed");
-        return { ...m, ...(changed ? { changed: true } : {}), ...(cc ? { commentCount: cc } : {}), ...(extra ? { issues: [extra, ...existing] } : {}) };
-      }),
-    };
-  }, [data, linkMap, self, runtimeIssueByNode, changedNodeIds, commentCounts]);
+  const marks = useMemo(() => ({ changed: changedNodeIds, comments: commentCounts }), [changedNodeIds, commentCounts]);
 
-  // Per-step run line: only what we actually know (the failing module).
-  const runStats = useMemo(() => {
-    const latest = runs?.executions?.[0];
-    if (!latest || latest.status !== "error" || !latest.causeModuleId) return undefined;
-    return { [String(latest.causeModuleId)]: { text: `failed here${latest.durationMs != null ? ` · ${latest.durationMs}ms` : ""}`, failing: true } };
-  }, [runs]);
+  /* ---------- selection + docks ---------- */
 
-  /* ---------- dock ---------- */
-
-  const setStepParam = useCallback((step: NodeId | null) => {
+  const setStepParam = useCallback((step: string | null) => {
     const url = new URL(window.location.href);
     if (step == null) {
       url.searchParams.delete("step");
       url.searchParams.delete("node");
     } else {
-      url.searchParams.set("step", String(step));
+      url.searchParams.set("step", step);
       url.searchParams.delete("node");
     }
     window.history.replaceState(window.history.state, "", url.toString());
   }, []);
 
-  const selectNode = useCallback(
-    (nodeId: NodeId) => {
-      const portal = parsePortalId(nodeId);
-      if (portal) {
-        router.push(workflowHref(portal));
-        return;
-      }
-      setTool(null);
-      setSelectedId(nodeId);
-      setStepParam(nodeId);
-      setNodeLoading(true);
-      setNodeDetail(null);
-      setNodeError(false);
-      connector
-        .fetchNodeDetail(id, nodeId)
-        .then(setNodeDetail)
-        .catch(() => setNodeError(true))
-        .finally(() => setNodeLoading(false));
-    },
-    [connector, id, router, setStepParam]
-  );
-
-  const closeNode = useCallback(() => {
-    setSelectedId(null);
-    setNodeDetail(null);
-    setNodeError(false);
-    setNodeLoading(false);
-    setStepParam(null);
-  }, [setStepParam]);
-
-  const openTool = useCallback(
-    (t: DockTool) => {
-      setTool((cur) => {
-        const next = cur === t ? null : t;
-        if (next) {
-          setSelectedId(null);
-          setNodeDetail(null);
-          setStepParam(null);
-        }
-        return next;
-      });
-    },
-    [setStepParam]
-  );
+  // Select one of this workflow's steps on the map (palette, dock rows).
+  const selectStep = useCallback((nodeId: NodeId) => {
+    setTool(null);
+    setStepRequest({ id: String(nodeId), gen: Date.now() });
+  }, []);
 
   const closeTool = useCallback(() => {
     setTool((cur) => {
@@ -280,13 +184,20 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
     });
   }, []);
 
-  // Deep link: /w/{p}/{id}?step=<id> selects that node once loaded.
-  useEffect(() => {
-    if (!data || !requestedStep) return;
-    const match = data.summary.modules.find((m) => String(m.id) === requestedStep);
-    if (match && String(selectedId) !== String(match.id)) selectNode(match.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, requestedStep]);
+  const openTool = useCallback(
+    (t: DockTool) => {
+      setTool((cur) => {
+        const next = cur === t ? null : t;
+        if (cur === "comments" && next !== "comments") setCommentGen((g) => g + 1);
+        if (next) setStepParam(null);
+        return next;
+      });
+    },
+    [setStepParam]
+  );
+
+  // A node selection on the map takes the right slot from any open tool.
+  const onSelectNode = useCallback(() => closeTool(), [closeTool]);
 
   usePaletteScope(
     useMemo(
@@ -295,43 +206,49 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
           ? {
               label: data.summary.name,
               nodes: data.summary.modules.map((m) => ({ id: m.id, label: m.label || m.summary || m.module })),
-              onSelect: selectNode,
+              onSelect: selectStep,
             }
           : null,
-      [data, selectNode]
+      [data, selectStep]
     )
   );
 
   const [refreshing, setRefreshing] = useState(false);
-  const [changesReload, setChangesReload] = useState(0);
+  const now = useNow();
 
   // Manual sync: live-fetch through the connector (also refreshes the stored
   // copy server-side), then re-pull runs + changes so everything reflects it.
   const refresh = useCallback(() => {
     setRefreshing(true);
-    Promise.all([
-      connector.loadWorkflow(id, true).then(setData),
-      provider === "make" ? fetchExecutions(provider, id).then(setRuns).catch(() => {}) : Promise.resolve(),
-    ])
-      .catch(() => {})
-      .finally(() => {
+    const label = connector.shortLabel;
+    const work = connector.loadWorkflow(id, true).then((d) => {
+      setData(d);
+      return d;
+    });
+    toast.promise(work, {
+      loading: `Syncing from ${label}…`,
+      success: (d) =>
+        d.summary.historyWarning
+          ? { message: "Synced, but history was not updated", description: d.summary.historyWarning }
+          : { message: `Synced from ${label}`, description: "Up to date · just now" },
+      error: (e: unknown) => ({
+        message: `Could not sync from ${label}`,
+        description: e instanceof Error && e.message ? e.message : "Showing the last loaded version.",
+      }),
+    });
+    work
+      .then(() => {
+        if (provider === "make") fetchExecutions(provider, id).then(setRuns).catch(() => {});
         fetchWorkflowChanges(provider, id)
           .then((d) => {
             const lastSeen = d.lastSeenAt;
             setChanges({ ...d, changes: d.changes.map((c) => ({ ...c, unseen: !lastSeen || c.detectedAt > lastSeen })) });
           })
           .catch(() => {});
-        setChangesReload((g) => g + 1);
-        setRefreshing(false);
-      });
+      })
+      .catch(() => {})
+      .finally(() => setRefreshing(false));
   }, [connector, id, provider]);
-
-  const toggleWatch = useCallback(() => {
-    const next = !wfMeta?.watching;
-    setWatch(`wf:${provider}:${id}`, next)
-      .then((r) => setWfMeta((m) => (m ? { ...m, watching: r.watching } : m)))
-      .catch(() => {});
-  }, [wfMeta, provider, id, setWfMeta]);
 
   /* ---------- render ---------- */
 
@@ -341,35 +258,30 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
 
   const { summary, meta } = data;
   const nativeUrl = summary.nativeUrl ?? connector.nativeUrl?.(id) ?? null;
-  const issueCounts = healthIssues.reduce((acc, i) => ({ ...acc, [i.severity]: acc[i.severity] + 1 }), { error: 0, warn: 0, info: 0 });
   const lastRun = runs?.executions?.[0] ?? null;
   const linkMapLastRun = myCard?.lastRun;
   const lastRunAt = lastRun?.startedAt ?? linkMapLastRun?.at ?? null;
   const lastRunStatus = lastRun?.status ?? linkMapLastRun?.status ?? null;
   const live = meta.statusPill.tone === "ok" && (!!lastRunAt ? Date.now() - new Date(lastRunAt).getTime() < 24 * 3600 * 1000 : provider !== "make");
+  const checkedAt = summary.checkedAt ?? connection?.lastSyncedAt ?? null;
   const metaLine = [
-    connection?.lastSyncedAt ? `synced ${relativeTime(connection.lastSyncedAt)}` : null,
-    provider === "make" && lastRunAt ? `last run ${relativeTime(lastRunAt)}${lastRunStatus && lastRunStatus !== "success" ? ` · ${lastRunStatus}` : ""}` : null,
+    checkedAt ? `synced ${relativeTime(checkedAt, now)}` : null,
+    provider === "make" && lastRunAt ? `last run ${relativeTime(lastRunAt, now)}${lastRunStatus && lastRunStatus !== "success" ? ` · ${lastRunStatus}` : ""}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
-  const selectedModule = selectedId != null ? (canvasData ?? summary).modules.find((m) => String(m.id) === String(selectedId)) ?? null : null;
 
-  const linkedSetHref = (() => {
-    if (!linkMap) return null;
-    const keys = new Set<string>([`${self.source}:${self.refId}`]);
-    for (const l of linkMap.links) {
-      const touches = (l.from.source === self.source && l.from.refId === self.refId) || (l.to.source === self.source && l.to.refId === self.refId);
-      if (!touches) continue;
-      keys.add(`${l.from.source}:${l.from.refId}`);
-      keys.add(`${l.to.source}:${l.to.refId}`);
-    }
-    return keys.size > 1 ? `/map?mode=nodes&focus=${encodeURIComponent([...keys].join(","))}` : null;
-  })();
-  const mapHref = `/map?focus=${encodeURIComponent(`${provider}:${id}`)}`;
-  const folderPath = indexEntry?.groupPath?.slice(-1)[0] ?? null;
   const needsReauth = connection?.status === "needs_reauth";
-  const dockOpen = selectedId != null || tool != null;
+
+  const dockProps = { inline: true, width: SIDEBAR_W, onClose: closeTool } as const;
+  const rightSlot =
+    tool === "comments" ? (
+      <DockHost {...dockProps} label="Workflow comments" dockKey="comments" header={<DockTitle icon={<MessageSquare className="size-3.5" />} title="Comments" subtitle="on this workflow · step threads live in each step" />}>
+        <div className="p-3">
+          <CommentsThread targetType="workflow" targetKey={`wf:${provider}:${id}`} onCountChange={(open) => setWfOpenComments(open)} />
+        </div>
+      </DockHost>
+    ) : null;
 
   return (
     <div className="flex h-full min-w-0 flex-col">
@@ -379,30 +291,12 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
         statusPill={meta.statusPill}
         live={live}
         changes={changes?.unseen ?? 0}
-        ownerName={wfMeta?.ownerName ?? null}
-        ownerIsYou={!!wfMeta?.ownerUserId && wfMeta.ownerUserId === user?.id}
-        onOwner={() => openTool("info")}
-        watching={!!wfMeta?.watching}
-        onToggleWatch={toggleWatch}
         onRefresh={refresh}
         refreshing={refreshing}
         meta={metaLine || null}
-        tools={[
-          {
-            id: "health",
-            label: "Health — issues & failing steps",
-            badge: issueCounts.error + issueCounts.warn > 0 ? issueCounts.error + issueCounts.warn : lastRunStatus === "error" || lastRunStatus === "incomplete" ? "!" : null,
-            tone: issueCounts.error > 0 || lastRunStatus === "error" || lastRunStatus === "incomplete" ? "err" : "warn",
-          },
-          { id: "info", label: "Info — owner, tags, stats", badge: wfTags && wfTags.length > 0 ? wfTags.length : null, tone: "t1" },
-          { id: "changes", label: "Changes", badge: changes && changes.unseen > 0 ? changes.unseen : null, tone: "info" },
-          { id: "comments", label: "Comments", badge: wfOpenComments > 0 ? wfOpenComments : null, tone: "t1" },
-          { id: "runs", label: "Runs", hidden: provider !== "make", badge: lastRunStatus === "error" || lastRunStatus === "incomplete" ? "!" : null, tone: "err" },
-          { id: "notes", label: "Notes", dot: !!wfMeta?.notes, tone: "ok" },
-        ]}
+        tools={[{ id: "comments", label: "Comments", badge: wfOpenComments > 0 ? wfOpenComments : null, tone: "t1" }]}
         activeTool={tool}
         onTool={openTool}
-        mapHref={mapHref}
         nativeUrl={nativeUrl}
         providerLabel={connector.shortLabel}
         accountTitle={accountTitle}
@@ -418,148 +312,36 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
       )}
 
       {/* States plainly when what is on screen is not what is in the platform:
-          the canvas below is only as trustworthy as the last capture. */}
+          the map below is only as trustworthy as the last capture. */}
       {capture && (
         <div className="px-3 pb-2">
           <CaptureNotice capture={capture} />
         </div>
       )}
 
-      <ConnectedChips linkMap={linkMap} self={self} />
+      {summary.stepsUnavailable && (
+        <p role="status" className="flex flex-none flex-wrap items-center gap-x-2 border-b border-line2 px-3 py-1.5 text-[12px] text-t2">
+          <span className="font-semibold text-t1">Steps unavailable via OAuth.</span>
+          HighLevel&apos;s official API returns workflow names and status only. Connect this location with the Rippit Chrome extension to see its steps, triggers and links here.
+          <Link href="/settings/connections" className="font-semibold underline-offset-2 hover:underline">
+            Open Settings → Connections
+          </Link>
+        </p>
+      )}
 
-      <div className="relative flex min-h-0 flex-1">
-        <div className="relative min-w-0 flex-1">
-          <ScenarioCanvas
-            modules={(canvasData ?? summary).modules}
-            connections={(canvasData ?? summary).connections}
-            selectedId={selectedId}
-            onNodeClick={selectNode}
-            live={live && provider === "make"}
-            dockOpen={dockOpen}
-            runStats={runStats}
-            onZoomChange={setZoom}
-          />
-          <StatusLine parts={[accountTitle, folderPath, `${summary.totalModules} ${connector.nouns.stepPlural}`]} zoom={zoom} />
-          <div className="absolute bottom-8 left-3 z-[2]">
-            <Legend />
-          </div>
-
-          {summary.stepsUnavailable && (
-            <div className="pointer-events-none absolute inset-0 z-[2] flex items-center justify-center p-4">
-              <div className="pointer-events-auto max-w-md rounded-card border border-line bg-panel p-5 text-center shadow-[var(--shadow-card)] backdrop-blur-[14px]">
-                <h2 className="mb-1.5 text-[14px] font-semibold">Steps unavailable via OAuth</h2>
-                <p className="text-[13px] text-t2">
-                  HighLevel&apos;s official API returns workflow names and status only. Connect this location with the Rippit Chrome extension to see its steps, triggers and links here.
-                </p>
-                <Link href="/settings/connections" className="mt-3 inline-block text-[13px] font-semibold underline-offset-4 hover:underline">
-                  Open Settings → Connections
-                </Link>
-              </div>
-            </div>
-          )}
-
-          {/* ---- the dock: exactly one occupant ---- */}
-          {selectedModule && (
-            <NodeInspector
-              provider={provider}
-              workflowId={id}
-              module={selectedModule}
-              detail={nodeDetail}
-              loading={nodeLoading}
-              error={nodeError}
-              executions={provider === "make" ? runs : null}
-              nativeUrl={nativeUrl}
-              watching={!!wfMeta?.watching}
-              onToggleWatch={toggleWatch}
-              onClose={closeNode}
-              onOpenRuns={() => openTool("runs")}
-              commentCount={commentCounts[String(selectedModule.id)] ?? 0}
-              onCommentsChanged={(open) => setCommentCounts((c) => ({ ...c, [String(selectedModule.id)]: open }))}
-            />
-          )}
-          {tool === "health" && (
-            <DockHost
-              label="Workflow health"
-              dockKey="health"
-              onClose={closeTool}
-              header={
-                <DockTitle
-                  icon={<HeartPulse className="size-3.5" />}
-                  title="Health"
-                  subtitle={issueCounts.error + issueCounts.warn > 0 ? `${issueCounts.error} error${issueCounts.error === 1 ? "" : "s"} · ${issueCounts.warn} warning${issueCounts.warn === 1 ? "" : "s"}` : "no issues detected"}
-                />
-              }
-            >
-              <HealthBody
-                issues={healthIssues}
-                modules={summary.modules}
-                lastRun={lastRunAt ? { status: lastRunStatus ?? "unknown", at: lastRunAt } : null}
-                onSelectNode={(n) => {
-                  const match = summary.modules.find((m) => String(m.id) === String(n));
-                  if (match) selectNode(match.id);
-                }}
-              />
-            </DockHost>
-          )}
-          {tool === "info" && (
-            <DockHost label="Workflow info" dockKey="info" onClose={closeTool} header={<DockTitle icon={<Info className="size-3.5" />} title={summary.name} subtitle={accountTitle} />}>
-              <InfoBody
-                provider={provider}
-                externalId={id}
-                stats={connector.headerStats(data)}
-                issueCounts={issueCounts}
-                nativeUrl={nativeUrl}
-                linkedSetHref={linkedSetHref}
-                tags={wfTags ?? []}
-                onTagsChange={setWfTags}
-                meta={wfMeta}
-                onMetaChange={(m) => (typeof m === "function" ? setWfMeta(m) : setWfMeta(m))}
-                lastRun={lastRun}
-                linkMapLastRun={linkMapLastRun}
-              />
-            </DockHost>
-          )}
-          {tool === "changes" && (
-            <DockHost label="Changes" dockKey="changes" onClose={closeTool} header={<DockTitle icon={<History className="size-3.5" />} title="Changes" subtitle={<span title="Snapshot diff at every sync, detected by Rippit — who/when comes from the platform's edit log where available.">{changes?.versions?.length ? `rev ${changes.versions[0].version}` : "snapshot diff"}</span>} />}>
-              <ChangesBody
-                provider={provider}
-                externalId={id}
-                reloadToken={changesReload}
-                onSelectNode={(n) => {
-                  const match = summary.modules.find((m) => String(m.id) === String(n));
-                  if (match) selectNode(match.id);
-                }}
-                onData={(d) => setChanges(d)}
-              />
-            </DockHost>
-          )}
-          {tool === "comments" && (
-            <DockHost label="Workflow comments" dockKey="comments" onClose={closeTool} header={<DockTitle icon={<MessageSquare className="size-3.5" />} title="Comments" subtitle="on this workflow · step threads live in each step" />}>
-              <div className="p-3">
-                <CommentsThread targetType="workflow" targetKey={`wf:${provider}:${id}`} onCountChange={(open) => setWfOpenComments(open)} />
-              </div>
-            </DockHost>
-          )}
-          {tool === "runs" && (
-            <DockHost label="Recent runs" dockKey="runs" onClose={closeTool} header={<DockTitle icon={<Activity className="size-3.5" />} title="Recent runs" subtitle={`${connector.shortLabel} · status, timing, failing step`} />}>
-              <RunsBody
-                provider={provider}
-                externalId={id}
-                onSelectNode={(n) => {
-                  const match = summary.modules.find((m) => String(m.id) === String(n));
-                  if (match) selectNode(match.id);
-                }}
-                onData={setRuns}
-              />
-            </DockHost>
-          )}
-          {tool === "notes" && (
-            <DockHost label="Notes" dockKey="notes" onClose={closeTool} header={<DockTitle icon={<NotebookPen className="size-3.5" />} title="Notes" subtitle="pinned runbook · shared with the workspace" />}>
-              <NotesBody provider={provider} externalId={id} meta={wfMeta} onChange={setWfMeta} />
-            </DockHost>
-          )}
-        </div>
-      </div>
+      <WorkflowMap
+        key={`${provider}:${id}`}
+        viewed={self}
+        linkMap={linkMap}
+        seedSummary={summary}
+        runs={runs}
+        stepRequest={stepRequest}
+        onStepParam={setStepParam}
+        onSelectNode={onSelectNode}
+        onSelectEdge={onSelectNode}
+        rightSlot={rightSlot}
+        marks={marks}
+      />
     </div>
   );
 }

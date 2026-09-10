@@ -127,11 +127,11 @@ export default function LocationPicker({
                   onChange={() => toggle(c.externalId)}
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate">
+                  <span className="block [overflow-wrap:anywhere]">
                     {c.name || <span className="tabular text-t2">{c.externalId}</span>}
                   </span>
                   {c.name && (
-                    <span className="block truncate text-[11.5px] tabular text-t3">
+                    <span className="block [overflow-wrap:anywhere] text-[11.5px] tabular text-t3">
                       {c.externalId}
                     </span>
                   )}

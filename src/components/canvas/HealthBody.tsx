@@ -91,7 +91,7 @@ export function HealthBody({
                   )}
                 </div>
                 {node && (
-                  <p className="mt-1 truncate text-[12.5px] font-semibold text-t1">
+                  <p className="mt-1 [overflow-wrap:anywhere] text-[12.5px] font-semibold text-t1">
                     {node.ordinal ? `${node.ordinal} · ` : ""}
                     {node.label || node.module}
                   </p>

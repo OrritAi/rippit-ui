@@ -12,6 +12,7 @@ import {
   Box,
   Clock3,
   Crosshair,
+  Funnel,
   Inbox,
   LayoutDashboard,
   Link2,
@@ -26,7 +27,7 @@ import {
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command";
 import { useConnections, useWorkflowIndex } from "@/components/app/ConnectionsProvider";
 import { usePalette } from "./palette-context";
-import { getConnector } from "@/lib/connectors";
+import { CONNECTORS, getConnector, isProviderId } from "@/lib/connectors";
 import { workflowHref } from "@/lib/portals";
 import { fetchViews, SavedView, searchEstate, SearchHit } from "@/app/lib/api";
 import { kindLabel, assetHref } from "@/components/shared/AssetsSection";
@@ -46,23 +47,26 @@ const SEARCH_DEBOUNCE_MS = 200;
 const SEARCH_MIN_CHARS = 2;
 
 function useServerSearch(query: string, enabled: boolean) {
-  const [result, setResult] = useState<{ q: string; hits: SearchHit[] } | null>(null);
+  const [result, setResult] = useState<{ q: string; hits: SearchHit[]; failed?: boolean } | null>(null);
   const q = query.trim();
   useEffect(() => {
     if (!enabled || q.length < SEARCH_MIN_CHARS) return;
     let live = true;
     const t = setTimeout(() => {
       searchEstate(q, 15)
+        // A failed request is not "no results" — carry the query and a failed
+        // flag so the UI can offer a retry instead of implying an empty estate.
         .then((r) => live && setResult({ q, hits: r.results }))
-        .catch(() => live && setResult({ q, hits: [] }));
+        .catch(() => live && setResult({ q, hits: [], failed: true }));
     }, SEARCH_DEBOUNCE_MS);
     return () => {
       live = false;
       clearTimeout(t);
     };
   }, [q, enabled]);
-  if (!enabled || q.length < SEARCH_MIN_CHARS) return { hits: [], pending: false };
-  return { hits: result?.q === q ? result.hits : [], pending: result?.q !== q };
+  if (!enabled || q.length < SEARCH_MIN_CHARS) return { hits: [], pending: false, failed: false };
+  const current = result?.q === q ? result : null;
+  return { hits: current?.hits ?? [], pending: !current, failed: !!current?.failed };
 }
 
 function hitHref(h: SearchHit): string {
@@ -77,6 +81,7 @@ const PAGES: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard", label: "Go to dashboard", icon: LayoutDashboard },
   { href: "/w", label: "Workflows", icon: Workflow },
   { href: "/map", label: "System map", icon: Network },
+  { href: "/martech", label: "Martech", icon: Funnel },
   { href: "/assets", label: "Assets", icon: Link2 },
   { href: "/inbox", label: "Needs you", icon: Inbox },
   { href: "/activity", label: "Open notifications", icon: Bell },
@@ -93,7 +98,7 @@ function IconBox({ icon: Icon }: { icon: LucideIcon }) {
   );
 }
 
-const ITEM = "h-9 gap-2.5 rounded-[7px] px-[9px] text-[13.5px] text-t1 data-[selected=true]:bg-hover";
+const ITEM = "min-h-9 gap-2.5 rounded-[7px] px-[9px] text-[13.5px] text-t1 data-[selected=true]:bg-hover";
 
 export function CommandPalette() {
   const router = useRouter();
@@ -102,7 +107,7 @@ export function CommandPalette() {
   const index = useWorkflowIndex();
   const { resolvedTheme, setTheme } = useTheme();
   const [query, setQuery] = useState("");
-  const { hits, pending } = useServerSearch(query, isOpen);
+  const { hits, pending, failed } = useServerSearch(query, isOpen);
   const { tags } = useTags();
   const recent = useRecentWorkflows();
   const [views, setViews] = useState<SavedView[]>([]);
@@ -144,7 +149,13 @@ export function CommandPalette() {
         <Kbd>esc</Kbd>
       </div>
       <CommandList className="max-h-[330px] p-1.5">
-        <CommandEmpty>{pending ? "Searching…" : "No results — try a workflow, step, asset, or page."}</CommandEmpty>
+        <CommandEmpty>
+          {pending
+            ? "Searching…"
+            : failed
+              ? "Search didn’t respond. Check your connection and try again."
+              : "No results — try a workflow, step, asset, or page."}
+        </CommandEmpty>
 
         {scope?.actions && scope.actions.length > 0 && (
           <CommandGroup heading="Actions">
@@ -159,7 +170,7 @@ export function CommandPalette() {
                 }}
               >
                 <IconBox icon={Zap} />
-                <span className="flex-1 truncate">{a.label}</span>
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{a.label}</span>
                 {a.hint && <CommandShortcut className="font-mono text-[9.5px]">{a.hint}</CommandShortcut>}
               </CommandItem>
             ))}
@@ -175,8 +186,11 @@ export function CommandPalette() {
                 return (
                   <CommandItem key={`${h.type}:${h.provider}:${h.workflowExternalId}:${h.nodeId ?? ""}:${h.value ?? ""}`} value={`${query} ${h.type} ${h.label ?? ""} ${h.workflowName ?? ""}`} className={ITEM} onSelect={() => go(hitHref(h))}>
                     <IconBox icon={h.type === "asset" ? Box : Search} />
-                    <span className="truncate">{h.label}</span>
-                    <span className="truncate text-[11.5px] text-t3">{h.type === "asset" ? `${kindLabel(h.kind ?? "")} · ${h.workflowName ?? ""}` : `${h.workflowName ?? ""}${h.secondary ? ` · ${h.secondary}` : ""}`}</span>
+                    <span className="min-w-0 [overflow-wrap:anywhere]">{h.label}</span>
+                    <span className="min-w-0 flex-1 text-[11.5px] text-t2">
+                      <span className="block [overflow-wrap:anywhere] font-medium">{h.workflowName || "Workflow name unavailable"}</span>
+                      <span className="block [overflow-wrap:anywhere] text-t3">{[h.provider && isProviderId(h.provider) ? CONNECTORS[h.provider].label : null, h.connectionLabel, h.type === "asset" ? kindLabel(h.kind ?? "") : h.ordinal ? `Step ${h.ordinal}` : h.secondary].filter(Boolean).join(" · ")}</span>
+                    </span>
                     <CommandShortcut className="font-mono text-[9.5px]">{h.type === "asset" ? "asset" : `${connector?.nouns.step ?? "step"}${h.ordinal ? ` ${h.ordinal}` : ""}`}</CommandShortcut>
                   </CommandItem>
                 );
@@ -197,7 +211,7 @@ export function CommandPalette() {
                 }}
               >
                 <IconBox icon={Crosshair} />
-                <span className="truncate">{n.label}</span>
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{n.label}</span>
                 <CommandShortcut className="font-mono text-[9.5px]">focus</CommandShortcut>
               </CommandItem>
             ))}
@@ -229,7 +243,7 @@ export function CommandPalette() {
             {recent.slice(0, 6).map((r) => (
               <CommandItem key={`${r.provider}:${r.id}`} value={`recent ${r.name}`} className={ITEM} onSelect={() => go(`/w/${r.provider}/${r.id}`)}>
                 <IconBox icon={Clock3} />
-                <span className="truncate">{r.name}</span>
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{r.name}</span>
                 <CommandShortcut className="font-mono text-[9.5px]">{getConnector(r.provider).shortLabel}</CommandShortcut>
               </CommandItem>
             ))}
@@ -241,7 +255,7 @@ export function CommandPalette() {
             {views.map((v) => (
               <CommandItem key={v.id} value={`view ${v.name}`} className={ITEM} onSelect={() => go(`/${v.kind === "unified" ? "map" : "dashboard"}?view=${encodeURIComponent(v.id)}`)}>
                 <IconBox icon={Bookmark} />
-                <span className="truncate">{v.name}</span>
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{v.name}</span>
                 <CommandShortcut className="font-mono text-[9.5px]">{v.kind === "unified" ? "map" : "dashboard"}</CommandShortcut>
               </CommandItem>
             ))}
@@ -268,8 +282,8 @@ export function CommandPalette() {
               {entries.map((e) => (
                 <CommandItem key={`${e.provider}:${e.refId}`} value={`${e.name} ${e.groupPath.join(" ")} ${connector.label}`} className={ITEM} onSelect={() => go(workflowHref({ source: e.provider, refId: e.refId }))}>
                   <AppPuck app={e.provider} size={20} />
-                  <span className="truncate">{e.name}</span>
-                  {e.groupPath.length > 0 && <span className="truncate text-[11.5px] text-t3">{e.groupPath.join(" / ")}</span>}
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{e.name}</span>
+                  {e.groupPath.length > 0 && <span className="min-w-0 [overflow-wrap:anywhere] text-[11.5px] text-t3">{e.groupPath.join(" / ")}</span>}
                   <CommandShortcut className="font-mono text-[9.5px]">{connector.shortLabel}</CommandShortcut>
                 </CommandItem>
               ))}
@@ -282,7 +296,7 @@ export function CommandPalette() {
             {linkNames.map((l) => (
               <CommandItem key={l.key} value={`link ${l.label}`} className={ITEM} onSelect={() => go(workflowHref({ source: l.from.source, refId: l.from.refId }))}>
                 <IconBox icon={l.dead ? ArrowUpRight : Link2} />
-                <span className={`truncate ${l.dead ? "text-err-text" : ""}`}>{l.label}</span>
+                <span className={`min-w-0 flex-1 [overflow-wrap:anywhere] ${l.dead ? "text-err-text" : ""}`}>{l.label}</span>
                 <CommandShortcut className="font-mono text-[9.5px]">{l.dead ? "broken" : l.kind === "subflow" ? "subflow" : "webhook"}</CommandShortcut>
               </CommandItem>
             ))}

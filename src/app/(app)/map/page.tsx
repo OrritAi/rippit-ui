@@ -175,7 +175,7 @@ export default function MapPage() {
                         <li key={g.id}>
                           <Link href={workflowHref({ source: g.source, refId: g.refId })} className="flex items-center gap-1.5 rounded-full border border-line bg-pill px-2.5 py-1 text-[11px] font-semibold text-t2 hover:text-t1">
                             <span aria-hidden="true" className="size-[7px] rounded-[2px]" style={{ background: providerColor(g.source) }} />
-                            <span className="max-w-[200px] truncate">{g.name}</span>
+                            <span className="max-w-[200px] text-left [overflow-wrap:anywhere]">{g.name}</span>
                           </Link>
                         </li>
                       ))}

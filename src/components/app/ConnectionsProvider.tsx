@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { fetchLinks, LinkMap } from "@/app/lib/api";
+import { toast } from "sonner";
 
 const EMPTY_SYNCING: ReadonlySet<string> = new Set();
 
@@ -186,8 +187,25 @@ export function ConnectionsProvider({
       if (inFlight.current.has(owner)) return;
       inFlight.current.add(owner);
       setSyncing((prev) => new Set(prev).add(conn.id));
+      const label = conn.displayName || conn.label || getConnector(conn.provider).shortLabel;
       try {
-        await syncConnection(conn);
+        const work = syncConnection(conn);
+        toast.promise(work, {
+          loading: `Syncing ${label}…`,
+          success: (res: unknown) => {
+            const r = (res ?? {}) as { synced?: number; outcome?: string; errors?: unknown[] };
+            const failed = r.outcome === "failed";
+            const partial = r.outcome === "partial" || (r.errors?.length ?? 0) > 0;
+            if (failed) return { message: `${label}: nothing captured`, description: "The sync ran but read nothing. See Health." };
+            if (partial) return { message: `${label} synced with gaps`, description: `${r.synced ?? 0} updated · some failed, see Health.` };
+            return { message: `${label} synced`, description: r.synced ? `${r.synced} updated · just now` : "Up to date · just now" };
+          },
+          error: (e: unknown) => ({
+            message: `Could not sync ${label}`,
+            description: e instanceof Error && e.message ? e.message : "Try again in a moment.",
+          }),
+        });
+        await work;
         loadTree(conn);
         fetchLinks()
           .then(setLinkMap)

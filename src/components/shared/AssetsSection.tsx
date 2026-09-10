@@ -37,6 +37,17 @@ const KIND_LABELS: Record<string, string> = {
   notion_database: "Notion database",
   notion_page: "Notion page",
   slack_channel: "Slack channel",
+  cf_tag: "ClickFunnels tag",
+  cf_email_template: "ClickFunnels email template",
+  cf_course: "ClickFunnels course",
+  cf_community_space: "ClickFunnels community space",
+  cf_pipeline: "ClickFunnels pipeline",
+  cf_pipeline_stage: "ClickFunnels stage",
+  cf_workflow: "ClickFunnels workflow",
+  cf_sender: "ClickFunnels sender",
+  cf_page: "ClickFunnels page",
+  cf_funnel: "ClickFunnels funnel",
+  cf_product: "ClickFunnels product",
 };
 
 export function kindLabel(kind: string): string {
@@ -61,7 +72,7 @@ export function AssetsSection({
           // No native URL (hashed webhooks/endpoints) → fall through to the
           // asset page so the name is never a dead end.
           const nameEl = a.dynamic ? (
-            <span className="truncate text-[12.5px] text-t1">{name}</span>
+            <span className="min-w-0 text-[12.5px] text-t1 [overflow-wrap:anywhere]">{name}</span>
           ) : a.url ? (
             <a
               href={a.url}
@@ -70,11 +81,11 @@ export function AssetsSection({
               title="Open the asset on its platform in a new tab"
               className="inline-flex min-w-0 items-center gap-1 text-[12.5px] text-t1 hover:underline"
             >
-              <span className="truncate">{name}</span>
+              <span className="min-w-0 [overflow-wrap:anywhere]">{name}</span>
               <ArrowUpRight aria-hidden="true" className="size-[10px] flex-none text-t3" />
             </a>
           ) : (
-            <Link href={assetHref(a.kind, a.value)} className="truncate text-[12.5px] text-t1 hover:underline" title="No native link for this kind — opens the asset page">
+            <Link href={assetHref(a.kind, a.value)} className="min-w-0 text-[12.5px] text-t1 [overflow-wrap:anywhere] hover:underline" title="No native link for this kind — opens the asset page">
               {name}
             </Link>
           );
@@ -85,7 +96,7 @@ export function AssetsSection({
               title="Dependencies — every workflow and step using this asset"
               className="inline-flex flex-none cursor-pointer items-center gap-[3px] text-[11px] text-t2 transition-colors hover:text-t1"
             >
-              <Network aria-hidden="true" className="size-[10px]" /> uses
+              <Network aria-hidden="true" className="size-[10px]" /> Dependencies
             </button>
           ) : (
             <Link
@@ -93,7 +104,7 @@ export function AssetsSection({
               title="Dependencies — every workflow and step using this asset"
               className="inline-flex flex-none items-center gap-[3px] text-[11px] text-t2 transition-colors hover:text-t1"
             >
-              <Network aria-hidden="true" className="size-[10px]" /> uses
+              <Network aria-hidden="true" className="size-[10px]" /> Dependencies
             </Link>
           );
           return (
@@ -101,7 +112,7 @@ export function AssetsSection({
               <Link2 aria-hidden="true" className="size-[11px] flex-none text-t3" />
               <div className="flex min-w-0 flex-1 flex-col">
                 {nameEl}
-                <span className="truncate text-[10.5px] text-t3">
+                <span className="min-w-0 text-[10.5px] text-t3 [overflow-wrap:anywhere]">
                   {kindLabel(a.kind)}
                   {a.dynamic ? " · mapped at runtime" : ""}
                 </span>

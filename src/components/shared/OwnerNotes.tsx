@@ -81,7 +81,7 @@ export function OwnerChip({
                   onClick={() => pick(m.user_id)}
                   className={`flex w-full items-center gap-2 rounded-control px-2 py-1 text-left text-[12.5px] hover:bg-hover ${meta?.ownerUserId === m.user_id ? "text-t1" : "text-t2"}`}
                 >
-                  <span className="truncate">{m.display_name || m.email}</span>
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{m.display_name || m.email}</span>
                   {meta?.ownerUserId === m.user_id && <span className="ml-auto text-[10.5px] text-t3">owner</span>}
                 </button>
               </li>

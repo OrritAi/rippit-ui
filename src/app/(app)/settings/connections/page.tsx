@@ -61,7 +61,7 @@ function ConnectionRow({
       <ConnectorGlyph connector={connector} size={34} />
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-2 text-[13.5px] font-semibold">
-          <span className="truncate">
+          <span className="min-w-0 [overflow-wrap:anywhere]">
             {connector.shortLabel} · {name}
           </span>
           <StatusPill
@@ -74,7 +74,7 @@ function ConnectionRow({
             }
           />
         </p>
-        <p className="truncate font-mono text-[11px] text-t3">
+        <p className="[overflow-wrap:anywhere] font-mono text-[11px] text-t3">
           {connector.nouns.container} id {connection.externalId}
           {connection.accountName && connection.label && connection.accountName !== connection.label ? ` · ${connection.accountName}` : ""}
           {connection.authType === "oauth" && " · via OAuth (names & status only)"}
@@ -319,7 +319,7 @@ function WorkspaceCard() {
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <h3 className="text-[13.5px] font-semibold">{current.name}</h3>
-          <p className="truncate font-mono text-[11.5px] text-t3">
+          <p className="[overflow-wrap:anywhere] font-mono text-[11.5px] text-t3">
             you are {current.role} · {data?.members.length ?? "…"} member{data && data.members.length === 1 ? "" : "s"}
             {workspaces.length > 1 ? ` · ${workspaces.length} workspaces` : ""}
           </p>
@@ -357,7 +357,7 @@ function WorkspaceCard() {
       <ul className="flex flex-col divide-y divide-line2 rounded-control border border-line2">
         {(data?.members ?? []).map((m) => (
           <li key={m.user_id} className="flex items-center gap-3 px-3 py-2">
-            <span className="min-w-0 flex-1 truncate text-[13px]">
+            <span className="min-w-0 flex-1 [overflow-wrap:anywhere] text-[13px]">
               {m.display_name || m.email || m.user_id}
               {m.user_id === user?.id && <span className="text-t3"> (you)</span>}
             </span>
@@ -383,7 +383,7 @@ function WorkspaceCard() {
         ))}
         {(data?.invites ?? []).map((inv) => (
           <li key={inv.id} className="flex items-center gap-3 px-3 py-2 text-t3">
-            <span className="min-w-0 flex-1 truncate text-[13px]">{inv.email}</span>
+            <span className="min-w-0 flex-1 [overflow-wrap:anywhere] text-[13px]">{inv.email}</span>
             <span className="rounded-full border border-dashed border-line px-2 py-[1px] text-[10.5px] font-semibold">invited · {inv.role}</span>
             {isOwner && (
               <button
@@ -487,7 +487,7 @@ function ProfileCard() {
     <div className="flex items-center gap-3 rounded-card border border-line bg-panel px-4 py-3.5">
       <div className="min-w-0 flex-1">
         <h3 className="text-[13.5px] font-semibold">Signed in</h3>
-        <p className="truncate font-mono text-[12px] text-t3">{user?.email}</p>
+        <p className="[overflow-wrap:anywhere] font-mono text-[12px] text-t3">{user?.email}</p>
         <form
           className="mt-2 flex items-center gap-1.5"
           onSubmit={async (e) => {

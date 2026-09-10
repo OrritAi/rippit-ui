@@ -31,7 +31,7 @@ export function DetailHeader({
       <div className="mb-3.5 flex items-center gap-3">
         {leading}
         <span className="min-w-0 flex-1">
-          <h2 className="m-0 truncate text-[16px] font-bold tracking-[-0.01em]">{title}</h2>
+          <h2 className="m-0 [overflow-wrap:anywhere] text-[16px] font-bold tracking-[-0.01em]">{title}</h2>
           {sub && <p className="tabular m-0 mt-[2px] font-mono text-[10.5px] text-t3">{sub}</p>}
         </span>
         {extra}

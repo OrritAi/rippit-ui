@@ -41,7 +41,7 @@ export default function InboxPage() {
               <DetailHeader
                 backHref="/inbox"
                 backLabel="all items"
-                leading={<AppPuck app={conn?.id ?? item.provider} color={conn?.brandColor} glyph={conn?.glyph} size={34} />}
+                leading={<AppPuck app={conn?.id ?? item.provider} color={conn?.brandColor} size={34} />}
                 title={item.card?.name ?? `${conn?.shortLabel ?? item.provider} ${item.refId}`}
                 sub={`${groupLabel} · ${conn?.shortLabel ?? item.provider}${item.when ? ` · ${relativeTime(item.when)}` : ""}`}
                 openHref={item.href}
@@ -119,9 +119,9 @@ export default function InboxPage() {
                     return (
                       <div key={it.key} className="flex items-center gap-2.5 border-b border-line2 px-[13px] py-2.5 last:border-b-0">
                         <span aria-hidden="true" className="h-9 w-[6px] flex-none rounded-[3px]" style={{ background: bar }} />
-                        <AppPuck app={conn?.id ?? it.provider} color={conn?.brandColor} glyph={conn?.glyph} size={22} />
+                        <AppPuck app={conn?.id ?? it.provider} color={conn?.brandColor} size={22} />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[12.5px] font-semibold text-t1">{it.card?.name ?? `${conn?.shortLabel ?? it.provider} ${it.refId}`}</span>
+                          <span className="block [overflow-wrap:anywhere] text-[12.5px] font-semibold text-t1">{it.card?.name ?? `${conn?.shortLabel ?? it.provider} ${it.refId}`}</span>
                           <span className="mt-[1px] block text-[11px] leading-[1.45] text-t2">
                             {it.reason}
                             {it.when ? <span className="text-t3"> · {relativeTime(it.when)}</span> : null}

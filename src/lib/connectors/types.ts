@@ -8,7 +8,7 @@
 import type { ComponentType } from "react";
 import type { ModuleInfo, NodeId, ScenarioSummary } from "@/app/lib/api";
 
-export type ProviderId = "make" | "ghl";
+export type ProviderId = "make" | "ghl" | "clickfunnels" | "clickfunnels_classic";
 
 /** Platform vocabulary, so copy reads natively per connector. */
 export interface ConnectorNouns {
@@ -66,7 +66,7 @@ export interface NodeDescription {
 /**
  * Body of the node inspector's Info tab — provider-specific sections only
  * (identity, filter, mapper, attributes…). The shared parts (what it does,
- * issues, assets, comments, runs) are rendered by NodeInspector itself.
+ * issues, assets, runs) are rendered by the workflow map's MapSidebar itself.
  */
 export interface DetailSectionsProps {
   data: unknown;

@@ -58,7 +58,7 @@ export function WorkflowsRail({
                   }}
                 />
                 <span className="sr-only">{ST[st].label} —</span>
-                <span className="flex-1 truncate text-[13px] font-semibold">
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere] text-[13px] font-semibold">
                   {w.name}
                 </span>
                 <span className="font-mono text-[10.5px] text-t3">{w.ops}</span>
@@ -108,7 +108,7 @@ export function WorkflowsRail({
                   className="size-[5px] flex-none rounded-full"
                   style={{ background: f.c, boxShadow: `0 0 6px ${f.c}` }}
                 />
-                <span className="flex-1 truncate text-[12px] text-t2">{f.t}</span>
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere] text-[12px] text-t2">{f.t}</span>
                 <span className="flex-none font-mono text-[10px] text-t3">
                   {f.d}
                 </span>

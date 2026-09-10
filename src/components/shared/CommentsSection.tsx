@@ -76,8 +76,8 @@ function MentionInput({
                 }}
                 className="flex w-full items-center gap-2 rounded-control px-2 py-1 text-left text-[12.5px] hover:bg-hover"
               >
-                <span className="truncate">{m.display_name || m.email}</span>
-                {m.display_name && <span className="truncate text-[11px] text-t3">{m.email}</span>}
+                <span className="min-w-0 [overflow-wrap:anywhere]">{m.display_name || m.email}</span>
+                {m.display_name && <span className="min-w-0 [overflow-wrap:anywhere] text-[11px] text-t3">{m.email}</span>}
               </button>
             </li>
           ))}

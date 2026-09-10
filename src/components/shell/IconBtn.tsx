@@ -2,19 +2,23 @@
 
 import { forwardRef } from "react";
 import type { LucideIcon } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 /*
  * Ghost icon button (rail / action bar / inspector): border brightens on
- * hover, filled when active. Always labelled — the label is the tooltip and
- * the accessible name. Sizes from the handoff: 26 (bars), 28 (default), 34
- * (rail).
+ * hover, filled when active. Always labelled — the label is the accessible
+ * name and, unless `title` is null, a real tooltip (hover + keyboard focus)
+ * rendered through the shared Radix tooltip. Sizes from the handoff: 26
+ * (bars), 28 (default), 34 (rail).
  */
 export interface IconBtnProps
   extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "aria-label" | "title"> {
   icon: LucideIcon;
   label: string;
-  /** Native tooltip; defaults to the label. Pass null when a Radix tooltip wraps the button. */
+  /** Tooltip text; defaults to the label. Pass null when the caller wraps the button in its own tooltip. */
   title?: string | null;
+  /** Which side the tooltip opens on. */
+  tipSide?: "top" | "bottom" | "left" | "right";
   size?: 22 | 26 | 28 | 34;
   active?: boolean;
   iconSize?: number;
@@ -22,16 +26,15 @@ export interface IconBtnProps
 
 export const IconBtn = forwardRef<HTMLButtonElement, IconBtnProps>(
   function IconBtn(
-    { icon: Icon, label, size = 28, active, iconSize, className = "", style, title, ...rest },
+    { icon: Icon, label, size = 28, active, iconSize, className = "", style, title, tipSide = "bottom", ...rest },
     ref
   ) {
     const glyph = iconSize ?? (size >= 34 ? 15 : size <= 22 ? 12 : 13);
-    return (
+    const button = (
       <button
         ref={ref}
         type="button"
         aria-label={label}
-        title={title === null ? undefined : (title ?? label)}
         aria-pressed={active === undefined ? undefined : active}
         className={`inline-flex flex-none cursor-pointer items-center justify-center rounded-control border transition-[border-color,background,color] duration-[var(--dur-fast)] ease-[var(--ease-out)] ${
           active
@@ -43,6 +46,15 @@ export const IconBtn = forwardRef<HTMLButtonElement, IconBtnProps>(
       >
         <Icon aria-hidden="true" style={{ width: glyph, height: glyph }} strokeWidth={2} />
       </button>
+    );
+    if (title === null) return button;
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent side={tipSide} sideOffset={6}>
+          {title ?? label}
+        </TooltipContent>
+      </Tooltip>
     );
   }
 );

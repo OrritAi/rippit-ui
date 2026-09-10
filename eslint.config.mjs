@@ -17,9 +17,10 @@ const eslintConfig = defineConfig([
       // the static-element rules can't see that pattern.
       "jsx-a11y/no-noninteractive-element-interactions": "warn",
       "jsx-a11y/no-static-element-interactions": "warn",
-      // The canvas viewport (role="group") is intentionally focusable so
-      // keyboard users can pan/zoom it, and the sidebar resize handle is an
-      // ARIA window splitter (focusable separator with aria-valuenow).
+      // The canvas viewport and the dashboard globe (both role="group") are
+      // intentionally focusable so keyboard users can pan/zoom them, and the
+      // sidebar resize handle is an ARIA window splitter (focusable
+      // separator with aria-valuenow).
       "jsx-a11y/no-noninteractive-tabindex": [
         "error",
         { roles: ["tabpanel", "group", "separator"] },

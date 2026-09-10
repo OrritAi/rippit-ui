@@ -82,11 +82,12 @@ export function Section({
   );
 }
 
-export function KvRow({ k, v }: { k: string; v: React.ReactNode }) {
+/** Values always wrap; `wrap` top-aligns the key for values known to run long. */
+export function KvRow({ k, v, wrap = false }: { k: string; v: React.ReactNode; wrap?: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-line2 px-0.5 py-[9px]">
-      <div className="text-[12px] text-t3">{k}</div>
-      <div className="truncate text-right font-mono text-[11.5px]">{v}</div>
+    <div className={`flex justify-between gap-3 border-b border-line2 px-0.5 py-[9px] ${wrap ? "items-start" : "items-center"}`}>
+      <div className="flex-none text-[12px] text-t3">{k}</div>
+      <div className="min-w-0 text-right font-mono text-[11.5px] [overflow-wrap:anywhere]">{v}</div>
     </div>
   );
 }

@@ -4,9 +4,9 @@ import { useId, useState } from "react";
 import { HelpCircle, X } from "lucide-react";
 
 /*
- * One legend for every canvas surface (workflow canvas, unified map). Keep
- * this the single place the visual vocabulary is spelled out — tokens here
- * must match what ScenarioCanvas renders.
+ * The legend for the unified system map (/map). Keep this the single place
+ * the visual vocabulary is spelled out — tokens here must match what the
+ * map's node canvas renders.
  */
 
 type Item = { swatch: React.ReactNode; label: string; hint?: string };

@@ -1,4 +1,5 @@
-import { appColor, appGlyph, onColorGradient } from "@/lib/apps";
+import { SoftwareLogo } from "@/components/shared/SoftwareLogo";
+import { appColor, onColorGradient } from "@/lib/apps";
 
 /*
  * App identity tile — the only chrome that carries colour. White glyph on
@@ -11,6 +12,7 @@ export function AppPuck({
   glyph,
   className = "",
   title,
+  radius: radiusProp,
 }: {
   app: string;
   size?: number;
@@ -18,9 +20,11 @@ export function AppPuck({
   glyph?: string;
   className?: string;
   title?: string;
+  /** Corner radius override (default size × 0.3, min 4). */
+  radius?: number;
 }) {
   const col = color ?? appColor(app);
-  const radius = Math.max(4, Math.round(size * 0.3));
+  const radius = radiusProp ?? Math.max(4, Math.round(size * 0.3));
   const font = Math.max(7, Math.round(size * 0.42));
   return (
     <span
@@ -37,7 +41,7 @@ export function AppPuck({
         textShadow: "0 1px 2px rgba(0,0,0,.3)",
       }}
     >
-      {glyph ?? appGlyph(app)}
+      {glyph ?? <SoftwareLogo app={app} size={Math.round(size * 0.6)} />}
     </span>
   );
 }

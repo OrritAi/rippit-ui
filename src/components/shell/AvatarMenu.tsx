@@ -46,8 +46,8 @@ export function AvatarMenu() {
         className="w-[232px] rounded-card border-line bg-pill p-1 text-t1 shadow-[var(--shadow-float)]"
       >
         <div className="px-2 pb-1.5 pt-1.5">
-          <p className="truncate text-[13px] font-semibold leading-tight">{displayName}</p>
-          <p className="truncate font-mono text-[10.5px] text-t3">{user?.email}</p>
+          <p className="[overflow-wrap:anywhere] text-[13px] font-semibold leading-tight">{displayName}</p>
+          <p className="[overflow-wrap:anywhere] font-mono text-[10.5px] text-t3">{user?.email}</p>
         </div>
         <DropdownMenuSeparator className="bg-line2" />
         <DropdownMenuLabel className="px-2 pb-0.5 pt-1 text-[10.5px] font-semibold uppercase tracking-wide text-t3">
@@ -69,7 +69,7 @@ export function AvatarMenu() {
                   <span aria-hidden="true" className="size-[6px] rounded-full bg-off" />
                 )}
               </span>
-              <span className="truncate">{w.name}</span>
+              <span className="min-w-0 [overflow-wrap:anywhere]">{w.name}</span>
               <span className="ml-auto text-[10.5px] text-t3">{w.role}</span>
             </DropdownMenuItem>
           );

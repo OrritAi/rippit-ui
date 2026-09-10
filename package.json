@@ -7,14 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint && node scripts/contrast-audit.mjs",
-    "lint:contrast": "node scripts/contrast-audit.mjs"
+    "lint:contrast": "node scripts/contrast-audit.mjs",
+    "check:map": "node --experimental-strip-types src/lib/workflowMap/model.check.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "d3": "^7.9.0",
     "framer-motion": "^13.1.0",
     "geist": "^1.7.2",
     "lucide-react": "^1.31.0",
@@ -23,11 +23,11 @@
     "radix-ui": "^1.6.7",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "sonner": "^2.0.8",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/d3": "^7.4.3",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

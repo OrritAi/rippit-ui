@@ -72,7 +72,7 @@ export function ChangeRow({ c, onSelectNode }: { c: WorkflowChange; onSelectNode
         />
         <span aria-hidden="true" className="size-[7px] flex-none rounded-full" style={{ background: t.accent, boxShadow: `0 0 6px ${t.accent}` }} />
         <span className="text-[11px] font-semibold uppercase tracking-wide text-t3">{t.label}</span>
-        <span className="min-w-0 flex-1 truncate text-[12.5px] text-t1">{compactSummary(c, t.label)}</span>
+        <span className="min-w-0 flex-1 [overflow-wrap:anywhere] text-[12.5px] text-t1">{compactSummary(c, t.label)}</span>
         <span className="flex-none text-[11px] text-t3" title={new Date(c.detectedAt).toLocaleString()}>
           {relativeTime(c.detectedAt)}
         </span>
@@ -90,7 +90,7 @@ export function ChangeRow({ c, onSelectNode }: { c: WorkflowChange; onSelectNode
             {pairs.map(([k, b, a]) => (
               <div key={k} className="flex min-w-0 gap-1.5">
                 <dt className="flex-none text-t3">{k}</dt>
-                <dd className="tabular min-w-0 truncate font-mono text-[10.5px] text-t2" title={`${b} → ${a}`}>
+                <dd className="tabular min-w-0 [overflow-wrap:anywhere] font-mono text-[10.5px] text-t2">
                   {b} → {a}
                 </dd>
               </div>

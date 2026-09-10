@@ -313,7 +313,7 @@ export function AcceptedTermsList() {
             aria-hidden="true"
             className={`size-3 flex-none translate-y-0.5 ${row.current ? "text-ok-text" : "text-t3"}`}
           />
-          <span className="min-w-0 flex-1 truncate text-t2">{row.title}</span>
+          <span className="min-w-0 flex-1 [overflow-wrap:anywhere] text-t2">{row.title}</span>
           <span className="flex-none text-[11.5px] text-t3">
             {new Date(row.acceptedAt).toLocaleDateString()}
             {!row.current && " · superseded"}

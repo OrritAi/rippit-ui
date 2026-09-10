@@ -9,7 +9,7 @@ import { MentionsPanel, useMentionsCount } from "./panels/MentionsPanel";
 import { AssetsPanel } from "./panels/AssetsPanel";
 
 /*
- * The 206px side column is contextual: each view registers the panel that
+ * The side column (206px by default, resizable) is contextual: each view registers the panel that
  * belongs next to it (workflow browser, needs-you items, notifications,
  * mention threads, asset structure). Selecting an item in the panel shows
  * it in the main area. Add a view = add a registry entry.
@@ -27,8 +27,8 @@ export interface SidePanelDef {
 }
 
 export const SIDE_PANELS: SidePanelDef[] = [
-  // Dashboard and the system map are full-bleed: no side panel at all.
-  { id: "none", title: "", match: (p) => p.startsWith("/dashboard") || p.startsWith("/map") },
+  // Dashboard, the system map and Martech are full-bleed: no side panel at all.
+  { id: "none", title: "", match: (p) => p.startsWith("/dashboard") || p.startsWith("/map") || p.startsWith("/martech") },
   { id: "inbox", title: "Needs you", match: (p) => p.startsWith("/inbox"), Component: InboxPanel, useCount: useInboxCount, autoOpen: true },
   { id: "activity", title: "Notifications", match: (p) => p.startsWith("/activity"), Component: NotificationsPanel, useCount: useNotificationsCount, autoOpen: true },
   { id: "mentions", title: "Mentions", match: (p) => p.startsWith("/mentions"), Component: MentionsPanel, useCount: useMentionsCount, autoOpen: true },
@@ -61,7 +61,7 @@ export function SidePanel() {
     <aside
       key={def.id}
       aria-label={`${def.title} panel`}
-      className="flex h-full w-[206px] flex-none flex-col border-r border-line2 bg-sidebar"
+      className="flex h-full w-full flex-none flex-col border-r border-line2 bg-sidebar"
     >
       <div className="flex h-[46px] flex-none items-center border-b border-line2 px-[13px] anim-fade-in">
         <span className="text-[13.5px] font-bold tracking-[-0.02em]">{def.title}</span>
