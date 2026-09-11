@@ -17,9 +17,12 @@ import {
   LayoutDashboard,
   Link2,
   Network,
+  Plug,
+  Radar,
   Search,
   Settings,
   SunMoon,
+  UserSearch,
   Workflow,
   Zap,
   type LucideIcon,
@@ -36,6 +39,7 @@ import { TagChip } from "@/components/tags/TagChip";
 import { AppPuck } from "@/components/shared/AppPuck";
 import { Kbd } from "@/components/shell/Kbd";
 import { useRecentWorkflows } from "@/lib/stored";
+import { looksLikeRecord, recordsHref } from "@/lib/records";
 
 /*
  * ⌘K action hub. Actions for the page you're on come first, then jumps
@@ -83,10 +87,12 @@ const PAGES: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/map", label: "System map", icon: Network },
   { href: "/martech", label: "Martech", icon: Funnel },
   { href: "/assets", label: "Assets", icon: Link2 },
+  { href: "/triage", label: "Triage", icon: Radar },
   { href: "/inbox", label: "Needs you", icon: Inbox },
   { href: "/activity", label: "Open notifications", icon: Bell },
   { href: "/mentions", label: "Mentions & comments", icon: AtSign },
-  { href: "/settings/connections", label: "Settings", icon: Settings },
+  { href: "/settings/organization", label: "Settings", icon: Settings },
+  { href: "/settings/connections", label: "Connections", icon: Plug },
   { href: "/monitor", label: "Monitor (preview — sample data)", icon: Activity },
 ];
 
@@ -134,6 +140,9 @@ export function CommandPalette() {
     router.push(href);
   };
   const empty = query.trim().length === 0;
+  /* An email, a phone number or an opaque id is a record, not a name: offer
+     the run timeline (exact match over hashed identifiers) before anything else. */
+  const record = looksLikeRecord(query);
 
   return (
     <CommandDialog
@@ -174,6 +183,16 @@ export function CommandPalette() {
                 {a.hint && <CommandShortcut className="font-mono text-[9.5px]">{a.hint}</CommandShortcut>}
               </CommandItem>
             ))}
+          </CommandGroup>
+        )}
+
+        {record && (
+          <CommandGroup heading="Triage">
+            <CommandItem value={`record ${query}`} className={ITEM} onSelect={() => go(recordsHref(query))}>
+              <IconBox icon={UserSearch} />
+              <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">Find runs touching ‘{query.trim()}’</span>
+              <CommandShortcut className="font-mono text-[9.5px]">triage</CommandShortcut>
+            </CommandItem>
           </CommandGroup>
         )}
 

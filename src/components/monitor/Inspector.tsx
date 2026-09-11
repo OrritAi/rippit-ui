@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUpRight, Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MapTip } from "@/components/workflowMap/MapTip";
 import { onColorGradient } from "@/lib/apps";
 import { getConnector } from "@/lib/connectors";
 import {
@@ -276,11 +277,20 @@ export function Inspector({
         </div>
       </Tabs>
 
-      {/* footer */}
+      {/* footer — this surface is fixture data: the replay control is
+          disabled and says so, so it can never read as an action on a real
+          run (replay lives on a workflow's Runs tool and only ever reads). */}
       <div className="flex gap-2 border-t border-line2 px-4 py-3">
-        <Button className="h-auto flex-1 cursor-pointer rounded-control py-[9px] text-[13px] font-semibold hover:opacity-85">
-          Replay run
-        </Button>
+        <MapTip label="Sample data — replay works on real Make runs from a workflow's Runs tool">
+          <Button
+            aria-disabled="true"
+            aria-label="Replay on map (preview) — sample data, not available here"
+            onClick={(e) => e.preventDefault()}
+            className="h-auto flex-1 cursor-not-allowed rounded-control py-[9px] text-[13px] font-semibold opacity-55 hover:opacity-55"
+          >
+            Replay on map (preview)
+          </Button>
+        </MapTip>
         <Button
           variant="outline"
           className="h-auto flex-1 cursor-pointer rounded-control border-line bg-transparent py-[9px] text-[13px] font-semibold text-t2 hover:border-t1 hover:bg-transparent hover:text-t1"

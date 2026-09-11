@@ -28,7 +28,7 @@ export const BOOT_HOME_PATH = "/dashboard";
 
 export const BOOT_LINES = {
   auth: "signing you in…",
-  workspace: "loading workspace…",
+  workspace: "loading organization…",
   connecting: "connecting platforms…",
   indexing: (workflows: number) =>
     `connecting platforms · indexing ${workflows} workflow${workflows === 1 ? "" : "s"}`,

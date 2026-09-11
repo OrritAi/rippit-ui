@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Check, LogOut, Plus, Settings, Users } from "lucide-react";
+import { Building2, Check, LogOut, Settings, Users } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,9 +16,9 @@ import { useConnections } from "@/components/app/ConnectionsProvider";
 import { UserAvatar } from "@/components/app/UserAvatar";
 
 /*
- * Rail-bottom avatar → account menu: workspace switcher (✓ current), new
- * workspace, Settings (connections dot), members, sign out. Theme lives on
- * the rail itself.
+ * Rail-bottom avatar → account menu: organization switcher (✓ current),
+ * Organization, Members, Settings (connections dot), sign out. Theme lives
+ * on the rail itself.
  */
 export function AvatarMenu() {
   const { user, signOut } = useAuth();
@@ -33,7 +33,7 @@ export function AvatarMenu() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={`Account menu — ${displayName}${current ? `, workspace ${current.name}` : ""}`}
+          aria-label={`Account menu — ${displayName}${current ? `, organization ${current.name}` : ""}`}
           className="mt-1 flex size-[26px] cursor-pointer items-center justify-center rounded-full border border-line bg-hover transition-[border-color] duration-[var(--dur-fast)] hover:border-line-strong data-[state=open]:border-line-strong"
         >
           <UserAvatar user={user} size={24} />
@@ -51,7 +51,7 @@ export function AvatarMenu() {
         </div>
         <DropdownMenuSeparator className="bg-line2" />
         <DropdownMenuLabel className="px-2 pb-0.5 pt-1 text-[10.5px] font-semibold uppercase tracking-wide text-t3">
-          Workspace
+          Organization
         </DropdownMenuLabel>
         {workspaces.map((w) => {
           const isCurrent = w.id === current?.id;
@@ -75,20 +75,20 @@ export function AvatarMenu() {
           );
         })}
         <DropdownMenuItem asChild className="gap-2 rounded-row text-[13px]">
-          <Link href="/settings/connections#workspace">
-            <Plus aria-hidden="true" className="size-3.5" />
-            New workspace
+          <Link href="/settings/organization">
+            <Building2 aria-hidden="true" className="size-3.5" />
+            Organization
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild className="gap-2 rounded-row text-[13px]">
-          <Link href="/settings/connections#workspace">
+          <Link href="/settings/members">
             <Users aria-hidden="true" className="size-3.5" />
-            Members &amp; invites
+            Members
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator className="bg-line2" />
         <DropdownMenuItem asChild className="gap-2 rounded-row text-[13px]">
-          <Link href="/settings/connections">
+          <Link href="/settings/organization">
             <Settings aria-hidden="true" className="size-3.5" />
             Settings
             <span

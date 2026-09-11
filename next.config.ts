@@ -31,6 +31,12 @@ const nextConfig: NextConfig = {
         destination: "/martech/:id",
         permanent: false,
       },
+      // Records became the Triage home; `?q=` carries over.
+      {
+        source: "/records",
+        destination: "/triage",
+        permanent: false,
+      },
     ];
   },
 };

@@ -3,7 +3,7 @@
 import type { Tag } from "@/app/lib/api";
 
 /* Tags are the cross-platform overlay on top of platform folders: chips and
-   filters, never a second tree (brainstorm/mvp/07). Colour is optional and
+   filters, never a second tree (rippit-docs/product/tags.md). Colour is optional and
    only ever a tint — text stays on the text-role tokens for contrast. */
 
 export function tagAccent(tag: Pick<Tag, "color">): string {

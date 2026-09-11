@@ -10,6 +10,7 @@ import {
   HeartPulse,
   History,
   Info,
+  ScrollText,
   MessageSquare,
   Network,
   NotebookPen,
@@ -29,20 +30,33 @@ import type { StatusPillInfo } from "@/lib/connectors/types";
 
 /*
  * Everything you can do to this workflow, one 46px row: browser toggle ·
- * identity (puck, name, status, changes pill, owner, watch, meta) · tools
- * (Info · Changes · Comments · Runs · Notes) · system map · Open in. Under
- * 880px the owner chip and meta hide and Open-in becomes an icon.
+ * identity (puck, name, status, changes pill, owner, watch, meta) · sync ·
+ * system map · History · tools (Info · Changes · Comments · Notes) · Open in.
+ * Under 880px the owner chip and meta hide and Open-in becomes an icon.
+ *
+ * History (ScrollText — lucide's `History` glyph is already the Changes dock
+ * tool's) navigates to this workflow's run log rather than opening a dock:
+ * one entry point into the runs, shared with /triage. While a run is being
+ * replayed it is filled in the triage accent, so the map says where the user
+ * came from; with no run the row is exactly as it was. A tool with `accent`
+ * reads the same way.
  */
 export type DockTool = "health" | "info" | "changes" | "comments" | "runs" | "notes";
 
 export interface ToolSpec {
   id: DockTool;
   label: string;
+  /** Tooltip, when it should say more than the accessible name. */
+  tip?: string;
   badge?: number | string | null;
   dot?: boolean;
-  tone?: "t1" | "warn" | "err" | "ok" | "info";
+  tone?: "t1" | "warn" | "err" | "ok" | "info" | "triage";
   hidden?: boolean;
+  /** Filled in the triage accent — the layer is active (a run is replayed). */
+  accent?: boolean;
 }
+
+const ACCENT_STYLE = { background: "var(--triage)", borderColor: "var(--triage)", color: "var(--bg)" } as const;
 
 const TOOL_ICON: Record<DockTool, LucideIcon> = {
   health: HeartPulse,
@@ -71,6 +85,11 @@ export function ActionBar({
   activeTool,
   onTool,
   mapHref,
+  historyHref,
+  historyUnavailable = null,
+  historyAccent = false,
+  historyBadge,
+  historyBadgeTone,
   nativeUrl,
   providerLabel,
   accountTitle,
@@ -97,6 +116,15 @@ export function ActionBar({
   onTool: (t: DockTool) => void;
   /** System-map link — rendered only when given. */
   mapHref?: string | null;
+  /** This workflow's run log — rendered only when the platform has runs. */
+  historyHref?: string | null;
+  /** Why history is unavailable here. Set → the control renders disabled and
+   *  says so, rather than vanishing and leaving the user hunting for it. */
+  historyUnavailable?: string | null;
+  /** Filled in the triage accent while a run is replayed on the map. */
+  historyAccent?: boolean;
+  historyBadge?: number | string | null;
+  historyBadgeTone?: "t1" | "warn" | "err" | "ok" | "info" | "triage";
   nativeUrl: string | null;
   providerLabel: string;
   /** "Make · Acme" — which account this workflow belongs to. */
@@ -202,11 +230,43 @@ export function ActionBar({
             <TooltipContent side="bottom" sideOffset={6}>View in system map</TooltipContent>
           </Tooltip>
         )}
+        {(historyHref || historyUnavailable) && (
+          <span className="relative inline-flex">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                {historyHref ? (
+                  <Link
+                    href={historyHref}
+                    aria-label="History"
+                    style={historyAccent ? ACCENT_STYLE : undefined}
+                    className="inline-flex size-[26px] items-center justify-center rounded-control border border-line text-t3 transition-colors duration-[var(--dur-fast)] hover:border-line-strong hover:text-t1"
+                  >
+                    <ScrollText aria-hidden="true" className="size-[13px]" />
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    aria-disabled="true"
+                    aria-label={`History — ${historyUnavailable}`}
+                    onClick={(e) => e.preventDefault()}
+                    className="inline-flex size-[26px] cursor-default items-center justify-center rounded-control border border-line text-t3 opacity-50"
+                  >
+                    <ScrollText aria-hidden="true" className="size-[13px]" />
+                  </button>
+                )}
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={6}>
+                {historyHref ? "History" : `History — ${historyUnavailable}`}
+              </TooltipContent>
+            </Tooltip>
+            <CornerBadge value={historyBadge} tone={historyBadgeTone ?? "t1"} />
+          </span>
+        )}
         {tools
           .filter((t) => !t.hidden)
           .map((t) => (
             <span key={t.id} className="relative inline-flex">
-              <IconBtn icon={TOOL_ICON[t.id]} label={t.label} size={26} active={activeTool === t.id} onClick={() => onTool(t.id)} />
+              <IconBtn icon={TOOL_ICON[t.id]} label={t.label} title={t.tip} size={26} active={activeTool === t.id} style={t.accent ? ACCENT_STYLE : undefined} onClick={() => onTool(t.id)} />
               <CornerBadge value={t.badge} dot={t.dot} tone={t.tone ?? "t1"} />
             </span>
           ))}

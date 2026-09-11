@@ -2,21 +2,26 @@
 
 import { useEffect, useMemo } from "react";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, CircleAlert, CircleSlash, HeartPulse, TriangleAlert, Unplug, type LucideIcon } from "lucide-react";
+import { ArrowRight, CheckCircle2, CircleAlert, CircleSlash, HeartPulse, Route, TriangleAlert, Unplug, type LucideIcon } from "lucide-react";
 import { useConnections, useWorkflowIndex, type WorkflowIndexEntry } from "@/components/app/ConnectionsProvider";
 import { getConnector } from "@/lib/connectors";
 import type { Issue, LastRun } from "@/app/lib/api";
 import { LastRunChip } from "@/components/shared/RunsPanel";
 import { AppPuck } from "@/components/shared/AppPuck";
 import { CaptureBadge } from "@/components/shared/CaptureBadge";
+import { MapTip } from "@/components/workflowMap/MapTip";
 import { RowCard, ViewBar, ViewBody, ViewTitle } from "@/components/views/ViewFrame";
 import { workflowHref } from "@/lib/portals";
 import { useCountUp } from "@/lib/useCountUp";
+import { issueRunId, runReplayHref } from "@/lib/workflowMap/run";
 
 /*
  * Health = the triage board. Aggregates every workflow's structural issues,
  * failing runs and dead cross-links into one worst-first list; each issue
- * row deep-links to the exact step on that workflow's canvas (?step=).
+ * row deep-links to the exact step on that workflow's canvas (?step=). A
+ * `last-run-failed` issue that names its execution (Make) also carries
+ * "Replay on map" → the canvas replaying that run (?run=, plus ?step= when
+ * the failing step is known) — the triage layer's entry point from here.
  */
 
 const TONE: Record<Issue["severity"], { text: string; accent: string; label: string }> = {
@@ -134,7 +139,7 @@ export default function HealthPage() {
       <ViewBody width={760}>
         <ViewTitle
           title="Health"
-          sub={loading ? "loading workspace…" : rows.length === 0 ? "no workflows synced yet" : `${healthyCount} healthy · ${unhealthy.length} need${unhealthy.length === 1 ? "s" : ""} attention`}
+          sub={loading ? "loading organization…" : rows.length === 0 ? "no workflows synced yet" : `${healthyCount} healthy · ${unhealthy.length} need${unhealthy.length === 1 ? "s" : ""} attention`}
         />
         <div className="mb-3.5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
           <Stat label="Errors" value={totals.errors} icon={CircleAlert} delay={0} danger />
@@ -227,25 +232,39 @@ export default function HealthPage() {
                 {r.issues.map((i, idx) => {
                   const t = TONE[i.severity];
                   const target = i.nodeId != null ? `${href}?step=${encodeURIComponent(String(i.nodeId))}` : href;
+                  const runId = issueRunId(i);
                   return (
-                    <Link
+                    <div
                       key={`${i.code}:${String(i.nodeId)}:${idx}`}
-                      href={target}
-                      className="group/issue flex w-full items-start gap-2.5 border-b border-line2 px-3.5 py-2 transition-[background] duration-[var(--dur-fast)] last:border-b-0 hover:bg-hover"
+                      className="flex w-full items-start gap-2.5 border-b border-line2 px-3.5 py-2 transition-[background] duration-[var(--dur-fast)] last:border-b-0 hover:bg-hover"
                     >
-                      <span aria-hidden="true" className="mt-[5px] size-[8px] flex-none rounded-full" style={{ background: t.accent }} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[11px] font-semibold uppercase tracking-wide" style={{ color: t.text }}>
-                          {t.label} · {i.code}
+                      <Link href={target} className="group/issue flex min-w-0 flex-1 items-start gap-2.5">
+                        <span aria-hidden="true" className="mt-[5px] size-[8px] flex-none rounded-full" style={{ background: t.accent }} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[11px] font-semibold uppercase tracking-wide" style={{ color: t.text }}>
+                            {t.label} · {i.code}
+                          </span>
+                          <span className="mt-[1px] block text-[12.5px] text-t2 [overflow-wrap:anywhere]">{i.message}</span>
                         </span>
-                        <span className="mt-[1px] block text-[12.5px] text-t2">{i.message}</span>
-                      </span>
-                      {i.nodeId != null && (
-                        <span className="mt-[3px] inline-flex flex-none items-center gap-1 text-[11px] font-semibold text-t3 transition-colors group-hover/issue:text-t1">
-                          go to step <ArrowRight aria-hidden="true" className="size-3" />
-                        </span>
+                        {i.nodeId != null && (
+                          <span className="mt-[3px] inline-flex flex-none items-center gap-1 text-[11px] font-semibold text-t3 transition-colors group-hover/issue:text-t1">
+                            go to step <ArrowRight aria-hidden="true" className="size-3" />
+                          </span>
+                        )}
+                      </Link>
+                      {runId && (
+                        <MapTip label="Replay this run on the map — steps it did not touch gray out">
+                          <Link
+                            href={runReplayHref(i.provider, r.entry.refId, runId, i.nodeId)}
+                            aria-label={`Replay run ${runId} on the map`}
+                            className="mt-[2px] inline-flex flex-none items-center gap-1 rounded-control border border-line px-2 py-[2px] text-[11px] font-semibold text-t2 transition-colors duration-[var(--dur-fast)] hover:border-line-strong hover:text-t1"
+                          >
+                            <Route aria-hidden="true" className="size-3" />
+                            Replay on map
+                          </Link>
+                        </MapTip>
                       )}
-                    </Link>
+                    </div>
                   );
                 })}
                 {r.issues.length === 0 && (r.runFailing || r.deadLinks > 0) && (

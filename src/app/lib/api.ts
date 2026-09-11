@@ -43,14 +43,55 @@ export function setActiveWorkspaceId(id: string | null) {
   else window.localStorage.removeItem(WORKSPACE_KEY);
 }
 
+/* Support context (platform staff viewing a customer organization read-only).
+   While set, every request names that organization and carries the support
+   header; the API answers with role "support" and no permissions. */
+const SUPPORT_KEY = "rippit.support";
+
+export interface SupportContext {
+  workspaceId: string;
+  name: string;
+}
+
+export function getSupport(): SupportContext | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(SUPPORT_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as Partial<SupportContext>;
+    return v && typeof v.workspaceId === "string" ? { workspaceId: v.workspaceId, name: v.name ?? "" } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Open the app as this organization, read-only. Full reload: every provider restarts in support mode. */
+export function enterSupport(org: { id: string; name: string }) {
+  window.localStorage.setItem(SUPPORT_KEY, JSON.stringify({ workspaceId: org.id, name: org.name }));
+  clearApiCaches();
+  window.location.assign("/dashboard");
+}
+
+export function exitSupport() {
+  window.localStorage.removeItem(SUPPORT_KEY);
+  clearApiCaches();
+  window.location.assign("/admin");
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
   const headers = new Headers(init?.headers);
   if (session) headers.set("Authorization", `Bearer ${session.access_token}`);
-  const workspaceId = getActiveWorkspaceId();
-  if (workspaceId) headers.set("X-Rippit-Workspace", workspaceId);
+  const support = getSupport();
+  if (support) {
+    headers.set("X-Rippit-Workspace", support.workspaceId);
+    headers.set("X-Rippit-Support", "1");
+  } else {
+    const workspaceId = getActiveWorkspaceId();
+    if (workspaceId) headers.set("X-Rippit-Workspace", workspaceId);
+  }
 
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   if (!res.ok) {
@@ -124,7 +165,8 @@ export interface WaitFor {
   text: string;
 }
 
-/** One runtime execution (Make) — status + timing + failing module, never payloads. */
+/** One runtime execution (Make) — status, timing and which steps ran; run
+ *  data (inputs, bundles) is fetched on demand at drill-in and never stored. */
 export interface Execution {
   executionId: string;
   status: "success" | "warning" | "error" | "incomplete" | "unknown";
@@ -134,7 +176,22 @@ export interface Execution {
   errorName: string | null;
   errorMessage: string | null;
   causeModuleId: string | null;
+  /** The failing module as the platform names it (Make sends no id) —
+   *  `causeModuleId` is resolved from it through module logs, or a unique
+   *  name match; `causeSource` says which, null when unresolved. */
+  causeModule?: { name: string | null; appName: string | null } | null;
+  causeSource?: "module_logs" | "name_match" | null;
   meta: Record<string, unknown>;
+}
+
+/** What the provider's runtime exposes — declared by the API, never assumed
+ *  from the provider id. `payload` says where run data can be read from:
+ *  the entry node only (webhook request / failing bundle) or nowhere. */
+export interface RuntimeCapabilities {
+  trace: boolean;
+  payload: "entry-only" | "none";
+  identifiers: boolean;
+  simulate?: boolean;
 }
 
 export interface ExecutionsResponse {
@@ -143,6 +200,7 @@ export interface ExecutionsResponse {
   executions: Execution[];
   fetchedAt: string | null;
   refreshing?: boolean;
+  runtime?: RuntimeCapabilities;
 }
 
 export function fetchExecutions(
@@ -159,6 +217,348 @@ export interface LastRun {
   status: Execution["status"];
   at: string | null;
   executionId?: string;
+}
+
+/* ─── Run trace · run data · records (monitoring) ────────────────────────── */
+
+/** Per-node state of one execution as the API reports it. `touched` may
+ *  arrive with a `status` of `error` / `warning` instead of the collapsed
+ *  `failed` / `warning`; the map overlay (`lib/workflowMap/run.ts`)
+ *  normalises both shapes. `unknown` = Rippit could not check that module
+ *  (coverage cut-off / rate limit), never "did not run". */
+export type RunNodeState = "touched" | "warning" | "failed" | "untouched" | "unknown";
+
+export interface TraceNode {
+  nodeId: string;
+  state: RunNodeState;
+  status: "success" | "warning" | "error" | null;
+  /** Bundle count the module reported (Make); null when not exposed. */
+  bundles: number | null;
+  warning: string | null;
+  error: string | null;
+}
+
+/** Another execution that carried the same record (hashed identifier)
+ *  within a short window of this one. */
+export interface RelatedRun {
+  provider: ProviderId;
+  workflowExternalId: string;
+  workflowName: string | null;
+  executionId: string;
+  startedAt: string | null;
+  status: Execution["status"];
+  via: string | null;
+}
+
+export interface ExecutionTrace {
+  supported: boolean;
+  reason?: string;
+  execution: Execution | null;
+  /** Every module of the stored blueprint, each with a state. */
+  nodes: TraceNode[];
+  /** Some modules could not be checked (`unknown`) — the picture is incomplete. */
+  partial: boolean;
+  coverage: { checked: number; total: number; fetchedAt: string | null } | null;
+  /** The node whose input the platform can hand back (webhook request or
+   *  failing bundle), if any. */
+  entry: {
+    nodeId: string | null;
+    kind: string | null;
+    payloadAvailable: boolean;
+    source: "hook_log" | "dlq_bundle" | null;
+  } | null;
+  related: RelatedRun[];
+  links: { history: string | null; execution: string | null; editor: string | null };
+  notes: string[];
+  /** Live run name from the platform (never stored), when it has one. */
+  runName?: string | null;
+  /** The workflow was edited after this run — steps may have changed. */
+  blueprintChangedSince?: boolean;
+  removed?: { moduleId: string; status: string | null }[];
+  refreshing?: boolean;
+  rateLimited?: boolean;
+  /** Seconds until the platform accepts reads again, when rate-limited. */
+  retryAfter?: number | null;
+}
+
+/** Fetched through from the platform at drill-in and shown once — the API
+ *  answers with `Cache-Control: no-store` and never persists it. */
+export interface ExecutionPayload {
+  supported: boolean;
+  available: boolean;
+  reason?: string;
+  source?: "hook_log" | "dlq_bundle" | null;
+  capturedAt?: string | null;
+  request?: {
+    method: string | null;
+    /** Masked label, never the raw hook URL. */
+    url: string | null;
+    query: Record<string, unknown> | null;
+    /** Sensitive headers arrive as "<redacted>". */
+    headers: Record<string, unknown> | null;
+    body: unknown;
+  } | null;
+  /** DLQ bundle of an incomplete run (untyped). */
+  bundle?: unknown;
+  bytes?: number | null;
+  truncated?: boolean;
+  note?: string | null;
+  rateLimited?: boolean;
+  retryAfter?: number | null;
+}
+
+export type RecordKind = "email" | "phone" | "contact_id" | "id";
+
+export interface RecordRun {
+  provider: ProviderId;
+  connectionId: string;
+  connectionLabel: string | null;
+  workflowExternalId: string;
+  workflowName: string | null;
+  executionId: string;
+  status: Execution["status"];
+  startedAt: string | null;
+  kind: RecordKind;
+  /** Where the identifier was read from: the webhook payload or the run name. */
+  source: "hook_log" | "run_name" | "run_name_live" | string;
+}
+
+export interface RecordRuns {
+  query?: string;
+  kinds: RecordKind[];
+  supported: boolean;
+  reason?: string;
+  runs: RecordRun[];
+  coverage: {
+    scenarios: number;
+    indexedTo: string | null;
+    retentionDays: number;
+    makeRetentionDays?: number | null;
+  } | null;
+  live?: { searched: number; skipped: number; rateLimited: boolean } | null;
+  recommendations?: { provider: ProviderId; workflowExternalId: string; workflowName: string | null; code: string }[];
+  refreshing?: boolean;
+  rateLimited?: boolean;
+  retryAfter?: number | null;
+}
+
+export function fetchExecutionTrace(
+  provider: ProviderId,
+  externalId: string,
+  executionId: string,
+  refresh = false
+): Promise<ExecutionTrace> {
+  return apiFetch<ExecutionTrace>(
+    `/workflows/${provider}/${encodeURIComponent(externalId)}/executions/${encodeURIComponent(executionId)}/trace${refresh ? "?refresh=true" : ""}`
+  );
+}
+
+export function fetchExecutionPayload(
+  provider: ProviderId,
+  externalId: string,
+  executionId: string,
+  node?: string
+): Promise<ExecutionPayload> {
+  const qs = node != null ? `?node=${encodeURIComponent(node)}` : "";
+  return apiFetch<ExecutionPayload>(
+    `/workflows/${provider}/${encodeURIComponent(externalId)}/executions/${encodeURIComponent(executionId)}/payload${qs}`
+  );
+}
+
+/** Exact-match search over hashed identifiers; the identifier itself only
+ *  ever travels as a query parameter to the API, never in a path. */
+export function searchRecords(q: string, refresh = false): Promise<RecordRuns> {
+  const qs = new URLSearchParams({ q });
+  if (refresh) qs.set("refresh", "true");
+  return apiFetch<RecordRuns>(`/records/search?${qs.toString()}`);
+}
+
+export function fetchRecordRuns(kind: string, hash: string): Promise<RecordRuns> {
+  return apiFetch<RecordRuns>(`/records/${encodeURIComponent(kind)}/${encodeURIComponent(hash)}/runs`);
+}
+
+/* ─── Run explorer (triage) ──────────────────────────────────────────────── */
+
+/*
+ * Every stored execution across every connection, queryable: status,
+ * workflow, time window, or the record that went through it. Read-only —
+ * these endpoints only report what already ran.
+ */
+
+export type RunWindow = "1h" | "24h" | "7d" | "30d";
+export type RunStatus = Execution["status"];
+
+/** One execution as the explorer lists it: the run plus the workflow and
+ *  connection it belongs to, so a row stands on its own. */
+export interface RunRow {
+  provider: ProviderId;
+  connectionId: string;
+  connectionLabel: string;
+  workflowExternalId: string;
+  workflowName: string | null;
+  executionId: string;
+  status: RunStatus;
+  startedAt: string | null;
+  durationMs: number | null;
+  operations: number | null;
+  errorName: string | null;
+  errorMessage: string | null;
+  causeModuleId: string | null;
+  nativeUrl: string | null;
+}
+
+/** How far back the index actually reaches — all fields optional, the page
+ *  renders only what the API sends. */
+export interface RunCoverage {
+  scenarios?: number;
+  indexedTo?: string | null;
+  retentionDays?: number;
+  makeRetentionDays?: number | null;
+}
+
+export interface RunsPage {
+  runs: RunRow[];
+  nextCursor: string | null;
+  coverage?: RunCoverage | null;
+  /** Set when `q` was read as a record identifier rather than free text. */
+  record?: { kind: RecordKind } | null;
+}
+
+export interface RunsQuery {
+  status?: RunStatus | null;
+  provider?: ProviderId | null;
+  workflow?: string | null;
+  q?: string | null;
+  window?: RunWindow;
+  limit?: number;
+  cursor?: string | null;
+}
+
+/** The identifier (`q`) only ever travels as a query parameter, never a path. */
+export function fetchRuns(query: RunsQuery = {}): Promise<RunsPage> {
+  const qs = new URLSearchParams();
+  if (query.status) qs.set("status", query.status);
+  if (query.provider) qs.set("provider", query.provider);
+  if (query.workflow) qs.set("workflow", query.workflow);
+  if (query.q) qs.set("q", query.q);
+  if (query.window) qs.set("window", query.window);
+  if (query.limit) qs.set("limit", String(query.limit));
+  if (query.cursor) qs.set("cursor", query.cursor);
+  const s = qs.toString();
+  return apiFetch<RunsPage>(`/runs${s ? `?${s}` : ""}`);
+}
+
+export interface RunStats {
+  window: RunWindow;
+  total: number;
+  byStatus: Record<RunStatus, number>;
+  successRate: number | null;
+  medianDurationMs: number | null;
+  /** Runs per time bucket, oldest first — the sparkline. */
+  buckets: { at: string; total: number; failed: number }[];
+  workflows: { provider: ProviderId; workflowExternalId: string; workflowName: string | null; total: number; failed: number }[];
+}
+
+export function fetchRunStats(window: RunWindow): Promise<RunStats> {
+  return apiFetch<RunStats>(`/runs/stats?window=${encodeURIComponent(window)}`);
+}
+
+/*
+ * One step of a run: a stored module row, named from the sync-time node
+ * index. A module the index does not know still appears — `name` is null and
+ * the node id stands in, because unnamed beats missing when the question is
+ * "what did this run touch". `size` is bytes.
+ */
+export interface RunDetailStep {
+  nodeId: string | null;
+  name: string | null;
+  app: string | null;
+  kind: string | null;
+  ordinal: string | null;
+  status: string | null;
+  bundles: number | null;
+  size: number | null;
+  warningMessage: string | null;
+  errorMessage: string | null;
+  fetchedAt: string | null;
+}
+
+/** What a run carried — kinds and provenance only. The hash column is never
+ *  read server-side, so no record value can arrive here in any form. */
+export interface RunIdentifier {
+  kind: RecordKind;
+  source: string;
+  hookId?: string | null;
+  hookLogId?: string | null;
+}
+
+/** Per-module coverage watermarks: how far back the index has checked. */
+export interface RunModuleCoverage {
+  moduleId: string | null;
+  coveredFrom: string | null;
+  fetchedAt: string | null;
+}
+
+/*
+ * The stored execution row, camelCased. The server builds it from the row's
+ * own keys, so a column added to the table later arrives here without an API
+ * change — hence the index signature, and why the UI iterates the extras
+ * rather than hard-coding a key list. `meta` is the full `raw_minimal`.
+ */
+export interface RunDetailRun {
+  executionId: string;
+  status: RunStatus;
+  startedAt: string | null;
+  durationMs: number | null;
+  operations: number | null;
+  errorName: string | null;
+  errorMessage: string | null;
+  causeModuleId: string | null;
+  fetchedAt: string | null;
+  /** Lifted out of `meta`: the failing module as the platform names it. */
+  causeModule: { name: string | null; appName: string | null } | null;
+  causeSource: string | null;
+  /** The platform's own id for the run, lifted out of `meta`. */
+  runId: string | null;
+  meta: Record<string, unknown> | null;
+  [key: string]: unknown;
+}
+
+/** Whether the run's data can be fetched, and from where. Decided from
+ *  stored evidence — this route never calls a platform. `reason` comes from
+ *  the runtime itself, so it is rendered verbatim. */
+export interface RunPayloadState {
+  available: boolean;
+  reason: string | null;
+  source: "hook_log" | "dlq_bundle" | null;
+  node: string | null;
+}
+
+/*
+ * Everything Rippit stored about one run: every column of the execution row,
+ * every module row, the coverage watermarks, what it carried, deep links,
+ * and `raw` — the rows verbatim, so the panel is never a summary of a
+ * summary. Provider-agnostic: any platform whose runtime lands answers here.
+ */
+export interface RunDetail {
+  provider: ProviderId;
+  connectionId: string;
+  connectionLabel: string | null;
+  workflowExternalId: string;
+  workflowName: string | null;
+  /** The workflow's editor link; `links.execution` is the run's own log. */
+  nativeUrl: string | null;
+  run: RunDetailRun;
+  steps: RunDetailStep[];
+  coverage: RunModuleCoverage[];
+  identifiers: RunIdentifier[];
+  raw: { execution: unknown; modules: unknown[]; coverage: unknown[] };
+  links: { history: string | null; execution: string | null; editor: string | null };
+  payload: RunPayloadState;
+}
+
+export function fetchRunDetail(provider: ProviderId, workflowExternalId: string, executionId: string): Promise<RunDetail> {
+  return apiFetch<RunDetail>(`/runs/${provider}/${encodeURIComponent(workflowExternalId)}/${encodeURIComponent(executionId)}`);
 }
 
 /* ─── Change log ─────────────────────────────────────────────────────────── */
@@ -354,74 +754,270 @@ export function deleteView(id: string): Promise<{ deleted: string }> {
   return apiFetch(`/views/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-/* ─── Workspaces ─────────────────────────────────────────────────────────── */
+/* ─── Organizations (API paths say /workspaces) ─────────────────────────── */
+
+/** The three roles. Exactly one owner per organization; owner is transferred, never set. */
+export type Role = "owner" | "admin" | "member";
+export type WorkspaceRole = Role;
+
+export type OrganizationStatus = "active" | "suspended";
 
 export interface Workspace {
   id: string;
   name: string;
   slug: string;
-  role: "owner" | "member";
+  role: Role;
+  status?: OrganizationStatus;
   created_by?: string | null;
+  created_at?: string | null;
   joined_at?: string;
 }
 
 export interface WorkspaceMember {
   workspace_id: string;
   user_id: string;
-  role: "owner" | "member";
+  role: Role;
   display_name: string | null;
   email: string | null;
   joined_at: string;
+  /** Last sign-in, when the API could read it. */
+  lastActiveAt?: string | null;
+  permissions?: string[];
+  permissions_source?: "role" | "custom";
 }
+
+export type InviteStatus = "pending" | "accepted" | "revoked" | "expired";
 
 export interface WorkspaceInvite {
   id: string;
   workspace_id: string;
   email: string;
-  role: "owner" | "member";
-  invited_at?: string;
+  role: Role;
+  invited_by?: string | null;
+  invited_at?: string | null;
+  status?: InviteStatus;
+  expiresAt?: string | null;
+  lastSentAt?: string | null;
+  sendCount?: number;
+  /** Set when the email could not be handed off; the invite still works on sign-in. */
+  sendError?: string | null;
+}
+
+/** GET /workspaces/current — the active organization plus the caller's standing in it. */
+export interface CurrentWorkspace {
+  id: string;
+  name: string;
+  slug: string;
+  status: OrganizationStatus;
+  createdAt: string | null;
+  /** "support" = platform staff viewing read-only. */
+  role: Role | "support";
+  permissions: string[];
+  access: string;
+  isPlatformAdmin: boolean;
 }
 
 export function fetchWorkspaces(): Promise<{ current: string; workspaces: Workspace[] }> {
   return apiFetch(`/workspaces`);
 }
 
+export async function fetchCurrentWorkspace(): Promise<CurrentWorkspace> {
+  const raw = await apiFetch<Record<string, unknown>>(`/workspaces/current`);
+  // The organization row is spread into the response; tolerate a nested one too.
+  const org = ((raw.organization as Record<string, unknown> | undefined) ?? raw) as Record<string, unknown>;
+  return {
+    id: String(org.id ?? ""),
+    name: String(org.name ?? ""),
+    slug: String(org.slug ?? ""),
+    status: (org.status as OrganizationStatus) || "active",
+    createdAt: (org.createdAt as string | undefined) ?? (org.created_at as string | undefined) ?? null,
+    role: (raw.role as CurrentWorkspace["role"]) || "member",
+    permissions: (raw.permissions as string[]) ?? [],
+    access: (raw.access as string) ?? "member",
+    isPlatformAdmin: raw.isPlatformAdmin === true,
+  };
+}
+
 export function createWorkspace(name: string): Promise<Workspace> {
   return apiPost<Workspace>(`/workspaces`, { name });
 }
 
-export function renameWorkspace(id: string, name: string): Promise<Workspace> {
-  return apiFetch(`/workspaces/${encodeURIComponent(id)}`, {
+function apiPatch<T>(path: string, body: unknown): Promise<T> {
+  return apiFetch<T>(path, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(body),
   });
+}
+
+export function renameWorkspace(id: string, name: string): Promise<Workspace> {
+  return apiPatch(`/workspaces/${encodeURIComponent(id)}`, { name });
 }
 
 export function fetchMembers(id: string): Promise<{ members: WorkspaceMember[]; invites: WorkspaceInvite[] }> {
   return apiFetch(`/workspaces/${encodeURIComponent(id)}/members`);
 }
 
-export type WorkspaceRole = "owner" | "member" | "viewer";
-
-export function inviteMember(id: string, email: string, role: WorkspaceRole = "member"): Promise<WorkspaceInvite> {
-  return apiPost<WorkspaceInvite>(`/workspaces/${encodeURIComponent(id)}/invites`, { email, role });
+export function updateMemberRole(id: string, userId: string, role: "admin" | "member"): Promise<WorkspaceMember> {
+  return apiPatch(`/workspaces/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`, { role });
 }
 
-export function revokeInvite(id: string, inviteId: string): Promise<{ deleted: string }> {
-  return apiFetch(`/workspaces/${encodeURIComponent(id)}/invites/${encodeURIComponent(inviteId)}`, { method: "DELETE" });
+/** The target becomes owner; every previous owner becomes an admin. */
+export function transferOwnership(
+  id: string,
+  userId: string
+): Promise<{ workspace_id: string; owner: string; previousOwners: string[]; yourRole: "admin" | null }> {
+  return apiPost(`/workspaces/${encodeURIComponent(id)}/transfer-ownership`, { userId });
 }
 
 export function removeMember(id: string, userId: string): Promise<{ removed: string }> {
   return apiFetch(`/workspaces/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`, { method: "DELETE" });
 }
 
-export function updateMe(displayName: string): Promise<WorkspaceMember> {
-  return apiFetch(`/me`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ displayName }),
-  });
+export function inviteMember(id: string, email: string, role: Role = "member"): Promise<WorkspaceInvite> {
+  return apiPost<WorkspaceInvite>(`/workspaces/${encodeURIComponent(id)}/invites`, { email, role });
+}
+
+export function resendInvite(id: string, inviteId: string): Promise<WorkspaceInvite> {
+  return apiPost(`/workspaces/${encodeURIComponent(id)}/invites/${encodeURIComponent(inviteId)}/resend`);
+}
+
+export function revokeInvite(id: string, inviteId: string): Promise<{ revoked: string }> {
+  return apiFetch(`/workspaces/${encodeURIComponent(id)}/invites/${encodeURIComponent(inviteId)}`, { method: "DELETE" });
+}
+
+/** Display name in every organization, and Supabase `user_metadata.full_name`. */
+export function updateMe(
+  displayName: string
+): Promise<{ workspace_id: string; user_id: string; memberships: number; display_name: string | null }> {
+  return apiPatch(`/me`, { displayName });
+}
+
+/* ─── Invites addressed to me / the public invite link ──────────────────── */
+
+/** What an invite link may show before anyone signs in. */
+export interface PublicInvite {
+  id: string;
+  organizationName: string | null;
+  inviterName: string | null;
+  role: Role;
+  emailMasked: string;
+  expiresAt: string | null;
+  status: InviteStatus;
+}
+
+export interface AcceptedInvite {
+  workspaceId: string;
+  role: Role;
+  organizationName: string | null;
+}
+
+export function fetchMyInvites(): Promise<{ invites: PublicInvite[] }> {
+  return apiFetch(`/me/invites`);
+}
+
+export function acceptMyInvite(inviteId: string): Promise<AcceptedInvite> {
+  return apiPost(`/me/invites/${encodeURIComponent(inviteId)}/accept`);
+}
+
+/** Unauthenticated lookup — 404 unknown, 410 used / revoked / expired (code `invite_{status}`). */
+export function fetchInviteByToken(token: string): Promise<PublicInvite> {
+  return apiFetch(`/invites/${encodeURIComponent(token)}`);
+}
+
+/** Bearer; 403 `invite_email_mismatch` when the signed-in address differs. */
+export function acceptInviteByToken(token: string): Promise<AcceptedInvite> {
+  return apiPost(`/invites/${encodeURIComponent(token)}/accept`);
+}
+
+/** The `code` of a structured API error, if any. */
+export function errorCode(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+  const d = error.detail as { code?: string } | undefined;
+  return typeof d?.code === "string" ? d.code : null;
+}
+
+/* ─── Admin portal (platform staff; everyone else gets 404) ─────────────── */
+
+export type AdminOrgStatus = "active" | "suspended" | "incident";
+export type Health = "ok" | "warn" | "err";
+
+export interface AdminStats {
+  organizations: number;
+  seats: number;
+  connections: number;
+  openIncidents: number;
+}
+
+export interface AdminOrgRow {
+  id: string;
+  name: string;
+  slug?: string;
+  status: AdminOrgStatus;
+  createdAt: string | null;
+  memberCount: number;
+  connectionCount: number;
+  workflowCount?: number;
+  runs30d?: number;
+  platforms?: string[];
+  health?: Health;
+  ownerEmail?: string | null;
+  owners?: { userId: string; name: string | null }[];
+  lastSyncAt: string | null;
+  lastActivityAt?: string | null;
+  suspendedAt?: string | null;
+  suspensionReason?: string | null;
+}
+
+export interface AdminOrgConnection {
+  id: string;
+  provider: string;
+  label: string | null;
+  status: string | null;
+  health?: Health;
+  lastSyncAt?: string | null;
+  lastSyncedAt?: string | null;
+  lastSyncOutcome?: "ok" | "partial" | "failed" | null;
+}
+
+export interface AdminOrgDetail {
+  organization: {
+    id: string;
+    name: string;
+    slug?: string;
+    status?: AdminOrgStatus;
+    created_at?: string | null;
+    createdAt?: string | null;
+    suspended_at?: string | null;
+    suspension_reason?: string | null;
+  };
+  members: WorkspaceMember[];
+  invites: WorkspaceInvite[];
+  connections: AdminOrgConnection[];
+  audit: { action: string; authMethod: string | null; userId: string | null; detail: Record<string, unknown>; at: string }[];
+}
+
+export function fetchAdminStats(): Promise<AdminStats> {
+  return apiFetch(`/admin/stats`);
+}
+
+export function fetchAdminOrganizations(q?: string, status?: AdminOrgStatus): Promise<{ organizations: AdminOrgRow[] }> {
+  const qs = new URLSearchParams({ limit: "500" });
+  if (q) qs.set("q", q);
+  if (status) qs.set("status", status);
+  return apiFetch(`/admin/organizations?${qs.toString()}`);
+}
+
+export function fetchAdminOrganization(id: string): Promise<AdminOrgDetail> {
+  return apiFetch(`/admin/organizations/${encodeURIComponent(id)}`);
+}
+
+export function suspendOrganization(id: string, reason?: string): Promise<unknown> {
+  return apiPost(`/admin/organizations/${encodeURIComponent(id)}/suspend`, { reason: reason ?? null });
+}
+
+export function unsuspendOrganization(id: string): Promise<unknown> {
+  return apiPost(`/admin/organizations/${encodeURIComponent(id)}/unsuspend`);
 }
 
 /** Manual tag (per workspace). */

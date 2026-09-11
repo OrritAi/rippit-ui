@@ -9,10 +9,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type {
-  ExecutionsResponse,
-  LinkMap,
-  ScenarioSummary,
+import {
+  fetchExecutionPayload,
+  type ExecutionPayload,
+  type ExecutionsResponse,
+  type ExecutionTrace,
+  type LinkMap,
+  type RelatedRun,
+  type ScenarioSummary,
 } from "@/app/lib/api";
 import { getConnector } from "@/lib/connectors";
 import { useEscape } from "@/components/shell/shell-context";
@@ -20,6 +24,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useTabVisible } from "@/hooks/useTabVisible";
 import {
+  ago,
   buildMap,
   expandAllSnapshot,
   initialExpanded,
@@ -27,6 +32,14 @@ import {
   parseKey,
   viewedPillId,
 } from "@/lib/workflowMap/model";
+import {
+  dimNodeIds,
+  failedNodeIds,
+  runFocusRect,
+  runStates,
+  runStatusWord,
+  traceNodeFor,
+} from "@/lib/workflowMap/run";
 import {
   useSummaryStore,
   type SummaryStore,
@@ -39,7 +52,7 @@ import {
   ROOT_WINDOW_AT,
   SIDEBAR_W,
 } from "@/lib/workflowMap/tokens";
-import type { MapNode, WorkflowRef } from "@/lib/workflowMap/types";
+import type { MapNode, WorkflowKey, WorkflowRef } from "@/lib/workflowMap/types";
 import { groupEdges } from "@/lib/workflowMap/edgeGroups";
 import { MapEdges } from "./MapEdges";
 import { MapEdgeSidebar } from "./MapEdgeSidebar";
@@ -78,6 +91,19 @@ import { useMapMeasure } from "./useMapMeasure";
  * Scale: above LITE_AT rendered nodes the map drops drift, pulses, stagger
  * and the unfold measure loop; above ROOT_WINDOW_AT roots, far rows render
  * as fixed-height placeholders. Ambient animation pauses in a hidden tab.
+ *
+ * Run replay: the host passes the trace of one execution as `run`
+ * (`?run=` is its URL state); `runStates` (lib/workflowMap/run.ts) gives
+ * every node of the viewed workflow a state that lands as `data-run`, the
+ * root gains `.wm-run`, edges between dimmed nodes fade, the failed node's
+ * incoming edge turns red, the minimap dims, and the sidebar shows "In this
+ * run". Esc clears the run once nothing else in the map is open.
+ * Related runs: the trace's `related[]` (other executions that carried the
+ * same record) whose workflow is rendered as a pill are reported to the host
+ * through `onRelatedWanted`; the host fetches each trace once and hands them
+ * back as `relatedTraces` (by execution id). Those workflows' steps then get
+ * their own states, their pill's meta line reads "ran 2h ago · failed", and
+ * selecting one of their steps shows "In the related run".
  */
 
 export interface StepRequest {
@@ -108,11 +134,29 @@ export interface WorkflowMapViewProps {
   onSelectEdge?: () => void;
   /** Alternate occupant of the right slot (a dock tool, `DockHost inline`). */
   rightSlot?: ReactNode;
+  /** Lowest-priority occupant: the replayed run's panel. A selected node, a
+   *  selected connection and a dock tool all take the slot ahead of it, and
+   *  closing them hands it back while the run is still replayed. */
+  runSlot?: ReactNode;
   marks?: MapMarks;
   /** Node detail loader (defaults to the connector's; the harness stubs it). */
   fetchDetail?: (ref: WorkflowRef, stepId: string) => Promise<unknown>;
   /** Clock for relative times in pill meta lines (fixtures pin it). */
   now?: number;
+  /** The trace of the execution being replayed, or null. */
+  run?: ExecutionTrace | null;
+  /** Esc (with nothing else open) asks the host to drop `?run=`. */
+  onClearRun?: () => void;
+  /** Run input loader for the sidebar (defaults to the API; the harness
+   *  stubs it). `ref` is the workflow the execution belongs to — the viewed
+   *  one, or a related workflow's when its step is selected. */
+  onLoadPayload?: (executionId: string, node: string, ref: WorkflowRef) => Promise<ExecutionPayload>;
+  /** Traces of the run's related executions the host has fetched, keyed by
+   *  execution id; the map overlays the ones whose workflow it renders. */
+  relatedTraces?: ReadonlyMap<string, ExecutionTrace> | null;
+  /** Related runs whose workflow is rendered as a pill (one per workflow):
+   *  the host fetches their traces once and passes them as `relatedTraces`. */
+  onRelatedWanted?: (runs: RelatedRun[]) => void;
 }
 
 const TOOLS_KEY = "rippit.map.toolsHidden";
@@ -137,9 +181,15 @@ export function WorkflowMapView({
   onSelectNode,
   onSelectEdge,
   rightSlot,
+  runSlot,
   marks,
   fetchDetail = defaultFetchDetail,
   now,
+  run = null,
+  onClearRun,
+  onLoadPayload,
+  relatedTraces = null,
+  onRelatedWanted,
 }: WorkflowMapViewProps) {
   const viewedKey = keyOf(viewed);
   const headingId = useId();
@@ -347,6 +397,96 @@ export function WorkflowMapView({
     }
   }, [hasTool]);
 
+  /* ---------- run replay ---------- */
+
+  const runActive = !!run && run.supported;
+  /* Workflows rendered as pills (other than the viewed one), as one sorted
+     string so the related-run bookkeeping only moves when the set does —
+     not on every rebuild of the model. */
+  const pillKeyList = useMemo(() => {
+    const keys = new Set<string>();
+    for (const n of model.flat) if (n.pill && n.ref && !n.isViewed) keys.add(keyOf(n.ref));
+    return [...keys].sort().join("\n");
+  }, [model]);
+  /* The trace's related runs whose workflow is on the map — one per
+     workflow, the first listed wins; the viewed workflow's own runs are the
+     primary trace's business, never "related". */
+  const relatedOnMap = useMemo((): RelatedRun[] => {
+    if (!runActive || !run?.related?.length) return [];
+    const onMap = new Set(pillKeyList.split("\n").filter(Boolean));
+    const seen = new Set<string>();
+    const out: RelatedRun[] = [];
+    for (const r of run.related) {
+      const key = keyOf({ source: r.provider, refId: r.workflowExternalId });
+      if (key === viewedKey || seen.has(key) || !onMap.has(key)) continue;
+      seen.add(key);
+      out.push(r);
+    }
+    return out;
+  }, [runActive, run, viewedKey, pillKeyList]);
+  useEffect(() => {
+    if (relatedOnMap.length > 0) onRelatedWanted?.(relatedOnMap);
+  }, [relatedOnMap, onRelatedWanted]);
+  /* The related traces the host handed back, keyed by workflow for the overlay. */
+  const relatedByKey = useMemo(() => {
+    const out = new Map<WorkflowKey, ExecutionTrace>();
+    for (const r of relatedOnMap) {
+      const t = relatedTraces?.get(r.executionId);
+      if (t?.supported) out.set(keyOf({ source: r.provider, refId: r.workflowExternalId }), t);
+    }
+    return out;
+  }, [relatedOnMap, relatedTraces]);
+  const states = useMemo(
+    () => runStates(model, viewedKey, run, relatedByKey),
+    [model, viewedKey, run, relatedByKey],
+  );
+  const dimIds = useMemo(
+    () => (runActive ? dimNodeIds(states) : undefined),
+    [runActive, states],
+  );
+  const failIds = useMemo(
+    () => (runActive ? failedNodeIds(states) : undefined),
+    [runActive, states],
+  );
+  const runStateOf = useCallback(
+    (node: MapNode) => states.get(node.id) ?? null,
+    [states],
+  );
+  /* The trace that speaks for a node: the replayed run for the viewed
+     workflow's steps, a related run for a related workflow's, else none. */
+  const traceFor = useCallback(
+    (node: MapNode): ExecutionTrace | null => {
+      if (!runActive || !node.stepRef) return null;
+      return node.stepRef.key === viewedKey ? run : (relatedByKey.get(node.stepRef.key) ?? null);
+    },
+    [runActive, run, viewedKey, relatedByKey],
+  );
+  const runErrorOf = useCallback(
+    (node: MapNode): string | null => {
+      if (node.kind !== "step" || !node.stepRef) return null;
+      const tn = traceNodeFor(traceFor(node), node.stepRef.stepId);
+      return tn?.error ?? tn?.warning ?? null;
+    },
+    [traceFor],
+  );
+  /* A related workflow's pill: "ran 2h ago · failed" on its meta line (every
+     copy of the pill — the run happened whichever step it hangs under). */
+  const runMetaOf = useCallback(
+    (node: MapNode): string | null => {
+      if (!node.pill || !node.ref) return null;
+      const ex = relatedByKey.get(keyOf(node.ref))?.execution;
+      if (!ex) return null;
+      return `ran ${ago(ex.startedAt, now ?? Date.now())} · ${runStatusWord(ex.status)}`;
+    },
+    [relatedByKey, now],
+  );
+  /* The run's escape layer sits under the selection and the dock: Esc
+     closes those first, the next Esc stops the replay. */
+  useEscape(
+    runActive && !!onClearRun && selectedId == null && selectedEdge == null && !hasTool,
+    () => onClearRun?.(),
+  );
+
   const expandAll = useCallback(() => {
     setExpanded((e) => expandAllSnapshot(model, e));
     animateUnfold();
@@ -443,6 +583,23 @@ export function WorkflowMapView({
   const detail: DetailState = (detailKey && details.get(detailKey)) || {
     status: "idle",
   };
+
+  /* The sidebar's run: the replayed run for a viewed step, the related run
+     for a related workflow's step. "Load input" fetches through for THAT
+     execution, from its own workflow. */
+  const selectedTrace = selectedNode ? traceFor(selectedNode) : null;
+  const selectedRunRelated = selectedTrace != null && selectedTrace !== run;
+  const loadPayload = useCallback(
+    (node: string) => {
+      const executionId = selectedTrace?.execution?.executionId;
+      const ref = selectedNode?.stepRef ? parseKey(selectedNode.stepRef.key) : null;
+      if (!executionId || !ref) return Promise.reject(new Error("No run is being replayed."));
+      return onLoadPayload
+        ? onLoadPayload(executionId, node, ref)
+        : fetchExecutionPayload(ref.source, ref.refId, executionId, node);
+    },
+    [selectedTrace, selectedNode, onLoadPayload],
+  );
 
   const cardFor = (node: MapNode) =>
     node.ref
@@ -551,6 +708,33 @@ export function WorkflowMapView({
     },
     [edgeInfo, innerRectOf, fitRect],
   );
+  /*
+   * Frame the run: once per run id, as soon as the map has measured the
+   * nodes it touched, fit the camera to them. `runFocusRect` decides the
+   * rect and the bounds (whole path, or the failure alone when the path
+   * sprawls); this only supplies the measured rects and calls the camera.
+   *
+   * Once per run id is the whole contract: it never fires on a re-render, a
+   * re-measure, a selection or a pan, so the user's own camera is never
+   * taken away from them. A run whose nodes are not measured yet leaves the
+   * ref unset and is framed on the render that measures them.
+   */
+  const framedRun = useRef<string | null>(null);
+  const boxes = measure.boxes;
+  useEffect(() => {
+    const rid = runActive ? (run?.execution?.executionId ?? null) : null;
+    if (!rid) {
+      framedRun.current = null;
+      return;
+    }
+    if (framedRun.current === rid) return;
+    const rects = new Map(boxes.map((b) => [b.id, { x: b.x, y: b.y, w: b.w, h: b.h }]));
+    const focus = runFocusRect(states, rects);
+    if (!focus) return;
+    framedRun.current = rid;
+    fitRect(focus.rect, { padding: focus.padding, minZoom: focus.minZoom, maxZoom: focus.maxZoom });
+  }, [runActive, run, states, boxes, fitRect]);
+
   const pairRoleOf = useCallback(
     (id: string): "source" | "target" | null => {
       if (!selectedEdge?.pinned || !focusedPair) return null;
@@ -581,15 +765,20 @@ export function WorkflowMapView({
     onToggle: toggleNode,
     srNoteFor: marks ? noteFor : undefined,
     isFreshGroup,
+    runActive,
+    runStateOf,
+    runErrorOf,
+    runMetaOf,
   };
 
-  const slotOpen = selectedNode != null || selectedGroup != null || hasTool;
+  const hasRunSlot = runSlot != null;
+  const slotOpen = selectedNode != null || selectedGroup != null || hasTool || hasRunSlot;
   const filtering = debounced.trim().length > 0;
 
   return (
     <TooltipProvider delayDuration={250} skipDelayDuration={400}>
       <div
-        className={`flex min-h-0 min-w-0 flex-1 flex-col ${lite ? "wm-lite" : ""}`}
+        className={`flex min-h-0 min-w-0 flex-1 flex-col ${lite ? "wm-lite" : ""} ${runActive ? "wm-run" : ""}`}
       >
         <div className="flex min-h-0 flex-1">
           {/* contain:paint + isolate: the canvas is its own stacking context AND
@@ -636,6 +825,8 @@ export function WorkflowMapView({
                     track={measure.unfolding || lite || reduced}
                     lite={lite}
                     paused={!visible}
+                    dimIds={dimIds}
+                    failIds={failIds}
                   />
                   <h2 id={headingId} className="sr-only">
                     Workflow map
@@ -674,6 +865,7 @@ export function WorkflowMapView({
               zoom={zoom}
               boxes={measure.boxes}
               rowBoxes={measure.rowBoxes}
+              dimIds={dimIds}
             />
           </div>
           {/* The slot is opaque (page bg under the panel tint) so nothing from the
@@ -694,6 +886,9 @@ export function WorkflowMapView({
                   onClose={close}
                   onShowStep={showStep}
                   note={noteFor(selectedNode)}
+                  run={selectedTrace}
+                  runRelated={selectedRunRelated}
+                  onLoadPayload={loadPayload}
                 />
               ) : selectedGroup ? (
                 <MapEdgeSidebar
@@ -704,8 +899,10 @@ export function WorkflowMapView({
                   onOpen={clickNode}
                   onClose={close}
                 />
-              ) : (
+              ) : hasTool ? (
                 rightSlot
+              ) : (
+                runSlot
               )}
             </div>
           </div>

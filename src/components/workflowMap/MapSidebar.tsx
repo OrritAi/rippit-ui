@@ -1,14 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ExecutionsResponse, WorkflowCard } from "@/app/lib/api";
+import { ApiError, type ExecutionPayload, type ExecutionsResponse, type ExecutionTrace, type WorkflowCard } from "@/app/lib/api";
 import { getConnector } from "@/lib/connectors";
 import type { ProviderId } from "@/lib/connectors/types";
 import { appName } from "@/lib/apps";
 import { keyOf, parseKey } from "@/lib/workflowMap/model";
+import { isEntryNode, nodeState, ran, runStateLabel, runStatusWord, traceNodeFor, type RunState } from "@/lib/workflowMap/run";
 import type { MapNode, WorkflowRef } from "@/lib/workflowMap/types";
 import { AppPuck } from "@/components/shared/AppPuck";
-import { JsonBlock, KvRow, Section } from "@/components/shared/DetailPanelKit";
+import { CopyJsonButton, JsonBlock, KvRow, Section } from "@/components/shared/DetailPanelKit";
 import { IssuesSection } from "@/components/shared/IssuesSection";
 import { TriggerConditions } from "@/components/shared/TriggerConditions";
 import { AssetsSection, assetHref } from "@/components/shared/AssetsSection";
@@ -25,10 +27,15 @@ import { nodeLink } from "./nodeLink";
  * something is wrong) → actions → exception notes only (a "Go to" step's
  * target with Show, a Make step's filter/wait, a pill whose steps Rippit
  * cannot show, the changed/comments note) → Issues (when any) → Runs (Make
- * only, when there is run data) → the step's own sections once its detail
- * arrives (trigger conditions, assets, survey structure) → Advanced details,
- * folded. No "What it does" prose: the card already carries the step
- * summary, and a pill's name and status are on the pill.
+ * only, when there is run data) → "Replay · in this run" while a run is
+ * replayed (triage-accented header; state, bundle count, warning / error
+ * text; the entry node loads its input on demand, other nodes say plainly
+ * what the platform does not expose; for a related workflow's step the
+ * section is "Replay · in the related run" and names that execution) → the
+ * step's own sections once its detail arrives (trigger
+ * conditions, assets, survey structure) → Advanced details, folded. No
+ * "What it does" prose: the card already carries the step summary, and a
+ * pill's name and status are on the pill.
  */
 
 export interface DetailState {
@@ -45,6 +52,9 @@ export function MapSidebar({
   onClose,
   note,
   onShowStep,
+  run = null,
+  runRelated = false,
+  onLoadPayload,
 }: {
   node: MapNode;
   viewed: WorkflowRef;
@@ -58,6 +68,14 @@ export function MapSidebar({
   note?: string | null;
   /** Select + centre a step of the same workflow (the jump target). */
   onShowStep?: (key: string, stepId: string) => void;
+  /** The trace that speaks for THIS node while a run is replayed: the
+   *  replayed run for a viewed step, a related run for a related
+   *  workflow's step (the host only ever passes the node's own). */
+  run?: ExecutionTrace | null;
+  /** `run` is a related execution's trace, not the replayed run's. */
+  runRelated?: boolean;
+  /** Fetch the run's input for a node — through from the platform, shown once, never stored. */
+  onLoadPayload?: (node: string) => Promise<ExecutionPayload>;
 }) {
   const router = useRouter();
   const viewedKey = keyOf(viewed);
@@ -75,10 +93,16 @@ export function MapSidebar({
   const failedHere =
     isStep && belongsToViewed && !!latest && latest.status === "error" && latest.causeModuleId != null && String(latest.causeModuleId) === node.stepRef?.stepId;
   const failures = runs?.executions?.filter((e) => e.status === "error" || e.status === "incomplete").length ?? 0;
+  /* The host passes a trace only for steps of the workflow it belongs to
+     (viewed or related), so no ownership check is needed here. */
+  const runActive = !!run?.supported && isStep && !!node.stepRef;
+  const runNode = runActive ? traceNodeFor(run, node.stepRef!.stepId) : null;
+  const runState: RunState | null = runActive ? (runNode ? nodeState(runNode) : "unknown") : null;
 
   let health: string | null = null;
   if (isStep) {
-    if (detailLoaded) health = failedHere ? "last run failed here" : issues.some((i) => i.severity === "error") ? "issue detected" : "no issues detected";
+    if (runState === "failed") health = "failed in this run";
+    else if (detailLoaded) health = failedHere ? "last run failed here" : issues.some((i) => i.severity === "error") ? "issue detected" : "no issues detected";
   } else if (isPill && card?.issueCounts) {
     health = card.issueCounts.error > 0 ? "issues detected" : "no issues detected";
   }
@@ -199,6 +223,19 @@ export function MapSidebar({
         </Section>
       )}
 
+      {/* In this run: only while a run is replayed, for steps the trace speaks for (viewed, or a related workflow's). */}
+      {runActive && run && runState && (
+        <InThisRun
+          key={`${run.execution?.executionId ?? "run"}:${node.id}`}
+          run={run}
+          related={runRelated}
+          state={runState}
+          stepId={node.stepRef!.stepId}
+          platform={connector.shortLabel}
+          onLoadPayload={onLoadPayload}
+        />
+      )}
+
       {isStep && detail.status === "loading" && (
         <p role="status" className="text-[12px] text-t3">
           Loading details
@@ -222,5 +259,134 @@ export function MapSidebar({
         </>
       )}
     </div>
+  );
+}
+
+const rateLimitText = (platform: string, retryAfter: number | null | undefined) =>
+  `${platform} is rate-limiting — try again in ${retryAfter != null && retryAfter > 0 ? `${Math.ceil(retryAfter)} s` : "a minute"}`;
+
+/*
+ * "In this run" — what the replayed execution says about this step. The
+ * state line, the bundle count, warning / error text (wrapped, never
+ * clamped). The entry node (webhook request) — or the cause module of an
+ * incomplete run (its bundle) — carries "Load input": fetched through from
+ * the platform at that moment, rendered once, never stored by Rippit.
+ * Every other node says plainly what the platform's API does not expose
+ * and links to the run on the platform. For a related workflow's step the
+ * section is "Replay · in the related run" and names that execution first.
+ */
+function InThisRun({
+  run,
+  related = false,
+  state,
+  stepId,
+  platform,
+  onLoadPayload,
+}: {
+  run: ExecutionTrace;
+  related?: boolean;
+  state: RunState;
+  stepId: string;
+  platform: string;
+  onLoadPayload?: (node: string) => Promise<ExecutionPayload>;
+}) {
+  const tn = traceNodeFor(run, stepId);
+  const entry = isEntryNode(run, stepId);
+  const incompleteCause = run.execution?.status === "incomplete" && state === "failed";
+  const canLoad = !!onLoadPayload && ((entry && run.entry?.payloadAvailable !== false) || incompleteCause);
+  const [payload, setPayload] = useState<ExecutionPayload | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = () => {
+    if (!onLoadPayload) return;
+    setLoading(true);
+    setLoadError(null);
+    onLoadPayload(stepId)
+      .then(setPayload)
+      .catch((e: unknown) => {
+        setLoadError(
+          e instanceof ApiError && e.status === 429
+            ? rateLimitText(platform, null)
+            : e instanceof Error && e.message
+              ? e.message
+              : `Could not fetch this from ${platform} just now.`
+        );
+      })
+      .finally(() => setLoading(false));
+  };
+
+  const stateLine = state === "unknown" && (run.rateLimited || run.partial) ? `${runStateLabel(state)} — ${platform} rate limit` : runStateLabel(state);
+  const stateTone = state === "failed" ? "text-err-text" : state === "warning" ? "text-warn-text" : ran(state) || state === "reached" ? "text-t1" : "text-t3";
+  const data = payload?.available ? (payload.request ?? payload.bundle ?? null) : null;
+  const inputTitle = incompleteCause && !entry ? "Failing bundle" : "Input";
+  const loadLabel = incompleteCause && !entry ? "Load bundle" : "Load input";
+
+  const ex = run.execution;
+  return (
+    <Section title={related ? "Replay · in the related run" : "Replay · in this run"} tone="triage">
+      <div className="flex flex-col gap-1.5">
+        {related && ex && (
+          <p className="m-0 font-mono text-[10.5px] leading-[1.5] text-t3 [overflow-wrap:anywhere]">
+            Related run {ex.executionId} · {runStatusWord(ex.status)} {relativeTime(ex.startedAt)} · same record
+          </p>
+        )}
+        <p className={`m-0 text-[12.5px] font-semibold leading-[1.5] ${stateTone}`}>{stateLine}</p>
+        {tn?.bundles != null && ran(state) && <KvRow k="Bundles" v={String(tn.bundles)} />}
+        {tn?.warning && <p className="m-0 text-[12px] leading-[1.5] text-warn-text [overflow-wrap:anywhere]">{tn.warning}</p>}
+        {tn?.error && <p className="m-0 text-[12px] leading-[1.5] text-err-text [overflow-wrap:anywhere]">{tn.error}</p>}
+        {canLoad ? (
+          <div className="mt-1.5 flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11.5px] font-semibold text-t3">{inputTitle}</span>
+              {data != null && <CopyJsonButton data={data} />}
+            </div>
+            {!payload && (
+              <Button size="xs" variant="ghost" onClick={load} disabled={loading} className="self-start">
+                {loading ? `Fetching from ${platform}` : loadLabel}
+              </Button>
+            )}
+            {payload?.available && (
+              <>
+                {payload.source === "hook_log" && payload.request && (
+                  <p className="m-0 font-mono text-[10.5px] leading-[1.5] text-t3 [overflow-wrap:anywhere]">
+                    {[payload.request.method, payload.request.url].filter(Boolean).join(" ")}
+                    {payload.capturedAt ? ` · received ${relativeTime(payload.capturedAt)}` : ""}
+                  </p>
+                )}
+                <JsonBlock data={data} />
+                {payload.truncated && (
+                  <p className="m-0 font-mono text-[10.5px] leading-[1.5] text-t3 [overflow-wrap:anywhere]">
+                    Cut at {payload.bytes != null ? `${payload.bytes} bytes` : "the size cap"}
+                  </p>
+                )}
+                <p className="m-0 font-mono text-[10.5px] leading-[1.5] text-t3 [overflow-wrap:anywhere]">
+                  {payload.note ?? `From ${platform} · shown once, never stored`}
+                </p>
+              </>
+            )}
+            {payload && !payload.available && (
+              <p className="m-0 font-mono text-[10.5px] leading-[1.5] text-t3 [overflow-wrap:anywhere]">
+                {payload.rateLimited ? rateLimitText(platform, payload.retryAfter) : (payload.reason ?? `${platform} did not hand this back for this run.`)}
+              </p>
+            )}
+            {loadError && (
+              <p role="alert" className="m-0 text-[12px] leading-[1.5] text-err-text [overflow-wrap:anywhere]">
+                {loadError}
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="m-0 mt-1 font-mono text-[10.5px] leading-[1.5] text-t3 [overflow-wrap:anywhere]">
+            {platform} does not expose this step’s data.{" "}
+            {run.links.execution && (
+              <a href={run.links.execution} target="_blank" rel="noopener noreferrer" className="font-semibold text-t2 underline-offset-2 hover:underline">
+                Open in {platform} ↗
+              </a>
+            )}
+          </p>
+        )}
+      </div>
+    </Section>
   );
 }

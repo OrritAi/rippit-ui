@@ -1,17 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, use } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, use } from "react";
 import { useSearchParams, notFound } from "next/navigation";
 import Link from "next/link";
-import { MessageSquare } from "lucide-react";
-import { fetchExecutions, fetchComments, fetchWorkflowChanges, markWorkflowSeen } from "@/app/lib/api";
-import type { ExecutionsResponse, NodeId, WorkflowChanges } from "@/app/lib/api";
+import { Activity, ArrowUpRight, MessageSquare, PanelRight, X } from "lucide-react";
+import { ApiError, fetchExecutions, fetchExecutionTrace, fetchComments, fetchWorkflowChanges, markWorkflowSeen } from "@/app/lib/api";
+import type { ExecutionsResponse, ExecutionTrace, NodeId, RelatedRun, RunRow, WorkflowChanges } from "@/app/lib/api";
 import { getConnector, isProviderId } from "@/lib/connectors";
 import type { WorkflowData } from "@/lib/connectors/types";
 import { WorkflowRef } from "@/lib/portals";
 import { useConnections, useWorkflowIndex } from "@/components/app/ConnectionsProvider";
 import { usePaletteScope } from "@/components/palette/palette-context";
-import { ActionBar, type DockTool } from "@/components/canvas/ActionBar";
+import { ActionBar, type DockTool, type ToolSpec } from "@/components/canvas/ActionBar";
 import { CaptureNotice } from "@/components/shared/CaptureBadge";
 import { DockHost, DockTitle } from "@/components/canvas/DockHost";
 import { WorkflowMap, type StepRequest } from "@/components/workflowMap/WorkflowMap";
@@ -19,6 +19,10 @@ import { SIDEBAR_W } from "@/lib/workflowMap/tokens";
 import { LoadingState } from "@/components/shared/LoadingState";
 import { ErrorCard } from "@/components/shared/ErrorCard";
 import { relativeTime } from "@/components/shared/RunsPanel";
+import { MapTip } from "@/components/workflowMap/MapTip";
+import { runCounts, runStatusWord, runUnchecked } from "@/lib/workflowMap/run";
+import { rememberRunSteps } from "@/lib/triage";
+import { RunPanel } from "@/components/triage/RunPanel";
 import { toast } from "sonner";
 import { useNow } from "@/hooks/useNow";
 import { CommentsThread } from "@/components/shared/CommentsSection";
@@ -27,14 +31,27 @@ import { writeStored, readStored, type RecentEntry } from "@/lib/stored";
 /*
  * Workflow view: header · notice rows · the workflow map (callers unfold
  * into the viewed workflow; nodes select into a 322px sidebar). The header
- * carries Sync and Comments only; the Comments dock shares the map's right
- * slot with the node sidebar — one occupant at a time. (Health, info,
- * changes, runs and notes docks exist in the codebase but are not mounted
- * here: the canvas is the page.)
- * `?step=` is the only URL state (`?node=` is read as an alias): it selects
- * that step of the viewed workflow; the palette and dock rows select
- * through the same request. Esc closes whichever occupant is open.
+ * carries Sync, History (Make only — a link to this workflow's run log, the
+ * triage layer's entry point on this page) and Comments; the Comments dock
+ * shares the map's right slot with the node sidebar — one occupant at a
+ * time. (Health, info, changes and notes docks exist in the codebase but are
+ * not mounted here: the canvas is the page.)
+ * `?step=` selects that step of the viewed workflow (`?node=` is read as an
+ * alias); the palette and dock rows select through the same request.
+ * `?run=<executionId>` replays one execution on the map (Make): its trace is
+ * fetched here, the map grays what the run did not touch, a terse "Replay"
+ * banner in the triage accent keeps the context, and the History icon fills
+ * in that accent so the row says where the run came from. Picking a run is
+ * the log's job — history row → `?run=` → History back to the log, two
+ * clicks each way. Without a run nothing of that shows and the page is the
+ * plain visualization. Esc closes the open occupant, then stops the replay.
+ * The trace's tally is remembered for the session so the log can show
+ * "7/9 steps" on a run without fetching a trace of its own. The trace's related
+ * runs (other executions that carried the same record) whose workflow the
+ * map renders as a pill are fetched here too — once per run id, no refresh
+ * — and handed to the map, which colours that workflow's steps as well.
  */
+const TRACE_REPOLL_MS = 6000;
 export default function WorkflowPage({ params }: { params: Promise<{ provider: string; id: string }> }) {
   const { provider, id } = use(params);
   if (!isProviderId(provider)) notFound();
@@ -42,6 +59,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
 
   const searchParams = useSearchParams();
   const requestedStep = searchParams.get("step") ?? searchParams.get("node");
+  const requestedRun = searchParams.get("run");
   const { linkMap, connections } = useConnections();
   const index = useWorkflowIndex();
 
@@ -56,6 +74,31 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
   const [stepRequest, setStepRequest] = useState<StepRequest | null>(() => (requestedStep ? { id: requestedStep, gen: 0 } : null));
 
   const [runs, setRuns] = useState<ExecutionsResponse | null>(null);
+  // The execution replayed on the map (`?run=`) and its trace, keyed by the
+  // run it answers so a stale trace never overlays another run.
+  const [runId, setRunId] = useState<string | null>(requestedRun);
+  const [traceState, setTraceState] = useState<{ runId: string; trace: ExecutionTrace | null; error: string | null } | null>(null);
+  const trace = runId != null && traceState?.runId === runId ? traceState.trace : null;
+  const traceError = runId != null && traceState?.runId === runId ? traceState.error : null;
+  // Traces of related runs the map asked for, cached by execution id for the
+  // life of the page; each id is fetched at most once (a failed read stays
+  // absent — the map simply shows nothing extra for that workflow).
+  // The run panel is the slot's lowest-priority occupant. Closing it leaves
+  // the run replayed; the banner's control brings it back. A new run opens it.
+  const [runPanelOpen, setRunPanelOpen] = useState(true);
+  // The step the run panel marks — the last one selected from it or elsewhere.
+  const [activeStepId, setActiveStepId] = useState<string | null>(requestedStep);
+  const [relatedTraces, setRelatedTraces] = useState<ReadonlyMap<string, ExecutionTrace>>(() => new Map());
+  const relatedTried = useRef(new Set<string>());
+  const onRelatedWanted = useCallback((runs: RelatedRun[]) => {
+    for (const r of runs) {
+      if (relatedTried.current.has(r.executionId)) continue;
+      relatedTried.current.add(r.executionId);
+      fetchExecutionTrace(r.provider, r.workflowExternalId, r.executionId)
+        .then((t) => setRelatedTraces((m) => new Map(m).set(r.executionId, t)))
+        .catch(() => {});
+    }
+  }, []);
   const [changes, setChanges] = useState<WorkflowChanges | null>(null);
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [wfOpenComments, setWfOpenComments] = useState(0);
@@ -80,10 +123,10 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider, id, reloadKey]);
 
-  // Runs up front (Make): the sidebar shows workflow-level runtime and the
-  // failing step, the header shows last run.
+  // Runs up front, for every provider: the route answers
+  // `{supported:false, reason}` for one without a runtime without calling the
+  // platform, which is what lets the header explain itself rather than hide.
   useEffect(() => {
-    if (provider !== "make") return;
     let live = true;
     fetchExecutions(provider, id)
       .then((d) => live && setRuns(d))
@@ -92,6 +135,57 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
       live = false;
     };
   }, [provider, id, reloadKey]);
+
+  // The replayed run's trace: which steps ran, which failed, what was not
+  // checked. Read once more after 6 s while the API is still checking modules.
+  // Its tally is remembered for the session so the history log can show
+  // "7/9 steps" on this run without ever fetching a trace of its own.
+  useEffect(() => {
+    if (!runId) return;
+    let live = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const remember = (t: ExecutionTrace) => {
+      if (!t.supported) return;
+      const c = runCounts(t);
+      rememberRunSteps(provider, id, runId, c.reached, c.total);
+    };
+    fetchExecutionTrace(provider, id, runId)
+      .then((t) => {
+        if (!live) return;
+        setTraceState({ runId, trace: t, error: null });
+        remember(t);
+        if (t.refreshing) {
+          timer = setTimeout(() => {
+            fetchExecutionTrace(provider, id, runId)
+              .then((t2) => {
+                if (!live) return;
+                setTraceState({ runId, trace: t2, error: null });
+                remember(t2);
+              })
+              .catch(() => {});
+          }, TRACE_REPOLL_MS);
+        }
+      })
+      .catch((e: unknown) => {
+        if (!live) return;
+        setTraceState({
+          runId,
+          trace: null,
+          error:
+            e instanceof ApiError && e.status === 404
+              ? `Run ${runId} is not among the runs Rippit holds for this ${connector.nouns.workflow} — it may be older than the retained history.`
+              : e instanceof Error && e.message
+                ? e.message
+                : "Could not load this run.",
+        });
+      });
+    return () => {
+      live = false;
+      if (timer) clearTimeout(timer);
+    };
+    // connector follows provider
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, id, runId, reloadKey]);
 
   useEffect(() => {
     if (!data) return;
@@ -157,6 +251,30 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
 
   const marks = useMemo(() => ({ changed: changedNodeIds, comments: commentCounts }), [changedNodeIds, commentCounts]);
 
+  /* The replayed run as a RunRow, so the panel renders through the same
+     `RunDetailBody` the log's expanded row does. What the trace does not
+     carry (ops, native url) simply reads "—" until the detail call answers. */
+  const runRow: RunRow | null = useMemo(() => {
+    if (!runId) return null;
+    const ex = trace?.execution ?? null;
+    return {
+      provider,
+      connectionId: connection?.id ?? "",
+      connectionLabel: connection?.displayName ?? "",
+      workflowExternalId: id,
+      workflowName: data?.summary.name ?? null,
+      executionId: runId,
+      status: ex?.status ?? "unknown",
+      startedAt: ex?.startedAt ?? null,
+      durationMs: ex?.durationMs ?? null,
+      operations: ex?.operations ?? null,
+      errorName: ex?.errorName ?? null,
+      errorMessage: ex?.errorMessage ?? null,
+      causeModuleId: ex?.causeModuleId ?? null,
+      nativeUrl: trace?.links?.execution ?? null,
+    };
+  }, [runId, trace, provider, connection, id, data]);
+
   /* ---------- selection + docks ---------- */
 
   const setStepParam = useCallback((step: string | null) => {
@@ -171,9 +289,21 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
     window.history.replaceState(window.history.state, "", url.toString());
   }, []);
 
+  // `?run=` mirrors `?step=`: replaceState, never a navigation.
+  const setRunParam = useCallback((run: string | null) => {
+    const url = new URL(window.location.href);
+    if (run == null) url.searchParams.delete("run");
+    else url.searchParams.set("run", run);
+    window.history.replaceState(window.history.state, "", url.toString());
+    setRunId(run);
+    if (run != null) setRunPanelOpen(true);
+  }, []);
+  const clearRun = useCallback(() => setRunParam(null), [setRunParam]);
+
   // Select one of this workflow's steps on the map (palette, dock rows).
   const selectStep = useCallback((nodeId: NodeId) => {
     setTool(null);
+    setActiveStepId(String(nodeId));
     setStepRequest({ id: String(nodeId), gen: Date.now() });
   }, []);
 
@@ -272,6 +402,26 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
     .join(" · ");
 
   const needsReauth = connection?.status === "needs_reauth";
+  const failures = runs?.executions?.filter((e) => e.status === "error" || e.status === "incomplete").length ?? 0;
+  // Header tools: Comments only. The runs themselves live behind the History
+  // icon, which navigates to this workflow's log instead of opening a dock —
+  // one entry point, shared with /triage.
+  const tools: ToolSpec[] = [{ id: "comments", label: "Comments", badge: wfOpenComments > 0 ? wfOpenComments : null, tone: "t1" }];
+  // History follows the runtime the API declares, never a hard-coded provider
+  // name: a platform lights up here the day its runtime lands. Until the
+  // answer arrives, Make is the one runtime that exists, so the control shows
+  // rather than flickering in. Without one it stays visible but disabled and
+  // says why — hiding it just sends people hunting through Triage.
+  const runtimeSupported = runs ? runs.supported : provider === "make";
+  const historyHref = runtimeSupported ? `/w/${provider}/${encodeURIComponent(id)}/history` : null;
+  const historyUnavailable = runtimeSupported
+    ? null
+    : runs?.reason || `no run history for ${connector.label} yet`;
+
+  const runSlot =
+    runRow && runPanelOpen ? (
+      <RunPanel row={runRow} shortId={shortId(runRow.executionId)} selectedStepId={activeStepId} onStepClick={selectStep} onClose={() => setRunPanelOpen(false)} />
+    ) : null;
 
   const dockProps = { inline: true, width: SIDEBAR_W, onClose: closeTool } as const;
   const rightSlot =
@@ -294,9 +444,14 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
         onRefresh={refresh}
         refreshing={refreshing}
         meta={metaLine || null}
-        tools={[{ id: "comments", label: "Comments", badge: wfOpenComments > 0 ? wfOpenComments : null, tone: "t1" }]}
+        tools={tools}
         activeTool={tool}
         onTool={openTool}
+        historyHref={historyHref}
+        historyUnavailable={historyUnavailable}
+        historyAccent={runId != null}
+        historyBadge={failures > 0 ? failures : null}
+        historyBadgeTone={failures > 0 ? "err" : "t1"}
         nativeUrl={nativeUrl}
         providerLabel={connector.shortLabel}
         accountTitle={accountTitle}
@@ -316,6 +471,21 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
       {capture && (
         <div className="px-3 pb-2">
           <CaptureNotice capture={capture} />
+        </div>
+      )}
+
+      {/* Run replay: the map below grays what this execution did not touch. */}
+      {runId && (
+        <div className="px-3 pb-2">
+          <RunBanner
+            runId={runId}
+            trace={trace}
+            error={traceError}
+            platform={connector.shortLabel}
+            noun={connector.nouns.workflow}
+            onClear={clearRun}
+            onShowPanel={runPanelOpen ? null : () => setRunPanelOpen(true)}
+          />
         </div>
       )}
 
@@ -340,8 +510,133 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
         onSelectNode={onSelectNode}
         onSelectEdge={onSelectNode}
         rightSlot={rightSlot}
+        runSlot={runSlot}
         marks={marks}
+        run={trace}
+        onClearRun={clearRun}
+        relatedTraces={relatedTraces}
+        onRelatedWanted={onRelatedWanted}
       />
+    </div>
+  );
+}
+
+/* The replay banner wears the triage accent: a left rule, a tinted border and
+   a faint fill — the layer's colour, so replay reads as something laid over
+   the map rather than the map itself. Status stays in the status colours. */
+const BANNER_STYLE = {
+  borderColor: "color-mix(in srgb, var(--triage) 45%, transparent)",
+  borderLeftColor: "var(--triage)",
+  borderLeftWidth: 3,
+  background: "color-mix(in srgb, var(--triage) 7%, transparent)",
+} as const;
+
+/*
+ * "Replay · run e12 · failed · 7/9 steps", with the platform link and the
+ * stop control as icons. Per-step failures and warnings are already ringed
+ * on the map, so the row only adds what the map cannot show: steps Rippit
+ * could not check, a blueprint edited since the run, and a trace that would
+ * not load. The × (and Esc, once nothing else is open) stops the replay.
+ */
+/** Long platform ids are cut in the middle; the full id is on hover. */
+function shortId(id: string): string {
+  return id.length <= 14 ? id : `${id.slice(0, 6)}…${id.slice(-5)}`;
+}
+
+function RunBanner({
+  runId,
+  trace,
+  error,
+  platform,
+  noun,
+  onClear,
+  onShowPanel,
+}: {
+  runId: string;
+  trace: ExecutionTrace | null;
+  error: string | null;
+  platform: string;
+  noun: string;
+  onClear: () => void;
+  /** Set only while the run panel is closed — the way back to it. */
+  onShowPanel?: (() => void) | null;
+}) {
+  const ex = trace?.execution ?? null;
+  const statusTone = error || ex?.status === "error" ? "text-err-text" : ex?.status === "warning" || ex?.status === "incomplete" ? "text-warn-text" : "text-t1";
+  const lead = error
+    ? error
+    : !trace
+      ? "loading"
+      : !trace.supported
+        ? (trace.reason ?? "replay is not available for this platform yet")
+        : ex
+          ? runStatusWord(ex.status)
+          : null;
+  const parts: string[] = [];
+  if (trace?.supported) {
+    if (trace.runName) parts.push(trace.runName);
+    const { reached, total } = runCounts(trace);
+    parts.push(`${reached}/${total} steps`);
+    const unchecked = runUnchecked(trace);
+    if (trace.partial && unchecked > 0) parts.push(`${unchecked} unchecked`);
+    if (trace.blueprintChangedSince) parts.push(`${noun} edited since`);
+    if (trace.refreshing) parts.push("checking");
+  }
+  const open = trace?.links?.execution ?? trace?.links?.history ?? null;
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-control border px-3 py-1.5 text-[12px] text-t2" style={BANNER_STYLE}>
+      <MapTip label="Replay of a recorded run">
+        <span className="inline-flex flex-none cursor-help items-center gap-1.5 text-[12px] font-semibold text-t1">
+          <Activity aria-hidden="true" className="size-3.5 flex-none text-triage" />
+          Replay
+        </span>
+      </MapTip>
+      <span className="tabular min-w-0 font-mono text-[11px] [overflow-wrap:anywhere]" title={runId}>
+        · run {shortId(runId)}
+      </span>
+      {lead && <span className={statusTone}>· {lead}</span>}
+      {parts.map((p) => (
+        <span key={p} className="min-w-0 [overflow-wrap:anywhere]">
+          · {p}
+        </span>
+      ))}
+      <span className="ml-auto flex flex-none items-center gap-0.5">
+        {onShowPanel && (
+          <MapTip label="Details">
+            <button
+              type="button"
+              onClick={onShowPanel}
+              aria-label="Show the run panel"
+              className="inline-flex size-[22px] cursor-pointer items-center justify-center rounded-control border-0 bg-transparent text-t3 transition-colors duration-[var(--dur-fast)] hover:bg-hover hover:text-t1"
+            >
+              <PanelRight aria-hidden="true" className="size-3.5" />
+            </button>
+          </MapTip>
+        )}
+        {open && (
+          <MapTip label={`Open in ${platform}`}>
+            <a
+              href={open}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Open this run in ${platform}`}
+              className="inline-flex size-[22px] items-center justify-center rounded-control text-t3 transition-colors duration-[var(--dur-fast)] hover:bg-hover hover:text-t1"
+            >
+              <ArrowUpRight aria-hidden="true" className="size-3.5" />
+            </a>
+          </MapTip>
+        )}
+        <MapTip label="Stop replaying · Esc" side="left">
+          <button
+            type="button"
+            onClick={onClear}
+            aria-label="Stop replaying this run"
+            className="inline-flex size-[22px] cursor-pointer items-center justify-center rounded-control border-0 bg-transparent text-t3 transition-colors duration-[var(--dur-fast)] hover:bg-hover hover:text-t1"
+          >
+            <X aria-hidden="true" className="size-3.5" />
+          </button>
+        </MapTip>
+      </span>
     </div>
   );
 }

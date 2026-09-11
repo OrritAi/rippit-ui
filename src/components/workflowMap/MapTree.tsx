@@ -12,6 +12,7 @@ import {
   STAGGER_MS,
   TALL_COLUMN_AT,
 } from "@/lib/workflowMap/tokens";
+import type { RunState } from "@/lib/workflowMap/run";
 import type { MapNode } from "@/lib/workflowMap/types";
 import { StepNode } from "./StepNode";
 import { WorkflowPill } from "./WorkflowPill";
@@ -66,6 +67,14 @@ export interface TreeCtx {
   srNoteFor?: (node: MapNode) => string | null;
   /** A children column mounted during the current unfold window. */
   isFreshGroup: (parentId: string) => boolean;
+  /** A run is being replayed: nodes carry `data-run` (lib/workflowMap/run.ts). */
+  runActive: boolean;
+  /** The node's state in that run, or null (no run / another workflow's node). */
+  runStateOf: (node: MapNode) => RunState | null;
+  /** The run's error / warning text for the node — the aria-label suffix. */
+  runErrorOf?: (node: MapNode) => string | null;
+  /** A related workflow's pill: its own run on the meta line ("ran 2h ago · failed"). */
+  runMetaOf?: (node: MapNode) => string | null;
 }
 
 const delay = (i: number): CSSProperties => ({
@@ -87,6 +96,9 @@ function Row({
   const selected = node.id === ctx.selectedId;
   const pair = ctx.pairRoleOf(node.id);
   const pairProps = pair ? { className: "wm-pair", "data-pulse": String(ctx.pairTick % 2), "data-pair": pair } : null;
+  const run = ctx.runActive ? ctx.runStateOf(node) : null;
+  const runError = run && ctx.runErrorOf ? ctx.runErrorOf(node) : null;
+  const runMeta = ctx.runActive && node.pill && ctx.runMetaOf ? ctx.runMetaOf(node) : null;
   const anim = ctx.lite ? "" : root ? "wm-rise" : "wm-branch";
   const kids = node.children;
   const joins = node.joins;
@@ -125,6 +137,8 @@ function Row({
             onClick={ctx.onClick}
             onToggle={ctx.onToggle}
             far={ctx.far}
+            run={run}
+            runMeta={runMeta}
           />
         </div>
       ) : (
@@ -136,6 +150,8 @@ function Row({
           onClick={ctx.onClick}
           srNote={ctx.srNoteFor?.(node)}
           far={ctx.far} pair={pairProps}
+          run={run}
+          runError={runError}
         />
       )}
       {(kids.length > 0 || joins.length > 0) && (
@@ -253,7 +269,7 @@ export function MapTree({
   const blockH =
     callers.length * PILL_H +
     (callers.length - 1) * CHILD_GAP_ROOT +
-    callers.filter((c) => c.meta && !ctx.far).length * META_H;
+    callers.filter((c) => (c.meta || (ctx.runActive && ctx.runMetaOf?.(c))) && !ctx.far).length * META_H;
   const nudge = short ? Math.max(0, Math.round((blockH - PILL_H) / 2)) : 0;
   return (
     <div className="flex items-start">

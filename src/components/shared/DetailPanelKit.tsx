@@ -65,16 +65,19 @@ export function JsonBlock({ data }: { data: unknown }) {
 export function Section({
   title,
   action,
+  tone = "default",
   children,
 }: {
   title: string;
   action?: React.ReactNode;
+  /** `triage`: the header wears the triage-layer accent (replay sections). */
+  tone?: "default" | "triage";
   children: React.ReactNode;
 }) {
   return (
     <div className="mb-4">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-[11.5px] font-semibold text-t3">{title}</h3>
+        <h3 className={`text-[11.5px] font-semibold ${tone === "triage" ? "text-triage" : "text-t3"}`}>{title}</h3>
         {action}
       </div>
       {children}

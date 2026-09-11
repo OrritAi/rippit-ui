@@ -5,9 +5,11 @@ import {
   type CSSProperties,
   type MouseEvent,
   type PointerEvent,
+  type ReactElement,
 } from "react";
 import { AppPuck } from "@/components/shared/AppPuck";
 import { pillChip } from "@/lib/workflowMap/model";
+import { runAria, type RunState } from "@/lib/workflowMap/run";
 import { PILL_NAME_MAX_W } from "@/lib/workflowMap/tokens";
 import type { MapNode } from "@/lib/workflowMap/types";
 import { MapTip } from "./MapTip";
@@ -32,8 +34,15 @@ import type { TreeItemProps } from "./useMapKeyboard";
  * still the measured element, so edges attach exactly as before. It also
  * carries aria-current and an "(viewing)" aria-label suffix.
  * Steps stay on the plain card surface; the mono meta line hangs under it.
+ * Run replay: `run` lands as `data-run` on the capsule (the measured element,
+ * which also carries `data-pair`) — "reached" for a pill under a step the
+ * run went through, "untouched" under a step it never reached — and the
+ * aria-label says so. A related workflow's own run (`runMeta`, "ran 2h ago
+ * · failed") joins the meta line under the capsule and the aria-label; the
+ * line wraps within the pill's width and never truncates.
  */
 const stop = (e: MouseEvent | PointerEvent) => e.stopPropagation();
+const baseLabel = (node: MapNode) => (node.isViewed ? `${node.name} (viewing)` : node.name);
 
 export const WorkflowPill = memo(function WorkflowPill({
   node,
@@ -44,6 +53,8 @@ export const WorkflowPill = memo(function WorkflowPill({
   onToggle,
   far = false,
   pair = null,
+  run = null,
+  runMeta = null,
 }: {
   node: MapNode;
   selected: boolean;
@@ -55,8 +66,15 @@ export const WorkflowPill = memo(function WorkflowPill({
   far?: boolean;
   /** Pairing focus attributes (class + data-pulse + data-pair) or null. */
   pair?: { className: string; "data-pulse": string; "data-pair": "source" | "target" } | null;
+  /** State in the replayed run (lib/workflowMap/run.ts), or null. */
+  run?: RunState | null;
+  /** This workflow's own run related to the replayed one ("ran 2h ago · failed"), or null. */
+  runMeta?: string | null;
 }) {
   const p = node.pill;
+  const ariaLabel = [baseLabel(node), runAria(run), runMeta].filter(Boolean).join(" — ");
+  const meta = [node.meta, runMeta].filter(Boolean).join(" · ");
+  const tip = (el: ReactElement) => (run === "unknown" ? <MapTip label="Not checked in this run">{el}</MapTip> : el);
   const open = !!p?.open;
   const full = pillChip(node);
   /* Far mode: the name stays, the chip shrinks to a glyph, the meta hides. */
@@ -111,6 +129,7 @@ export const WorkflowPill = memo(function WorkflowPill({
         data-node-id={node.id}
         data-pair={pair?.["data-pair"]}
         data-pulse={pair?.["data-pulse"]}
+        data-run={run ?? undefined}
         className={`${pair ? "wm-pair " : ""}pointer-events-auto flex min-h-10 flex-none items-center gap-[9px] rounded-full border border-[var(--pill-border)] bg-pill py-1.5 pl-[9px] pr-1.5 shadow-[var(--shadow-card)] transition-[border-color,background,transform,box-shadow] duration-[220ms] ease-[var(--ease-out)] hover:-translate-y-[2px] ${viewed ? "text-bg" : "text-t1 hover:border-line-strong"}`}
         style={
           {
@@ -120,46 +139,48 @@ export const WorkflowPill = memo(function WorkflowPill({
           } as CSSProperties
         }
       >
-        <div
-          role="treeitem"
-          tabIndex={tabIndex}
-          aria-level={ariaLevel}
-          aria-selected={ariaSelected}
-          aria-expanded={ariaExpanded}
-          onKeyDown={onKeyDown}
-          onFocus={onFocus}
-          aria-current={viewed ? "true" : undefined}
-          title={node.desc}
-          aria-label={viewed ? `${node.name} (viewing)` : node.name}
-          onClick={() => onClick(node)}
-          className="flex min-w-0 cursor-pointer select-none items-center gap-[9px] rounded-full text-left"
-        >
-          <span className="relative flex flex-none">
-            <AppPuck app={node.app} size={24} />
-            {node.status && (
-              <span
-                aria-hidden="true"
-                className={`absolute -bottom-px -right-px size-1.5 rounded-full border border-pill ${node.status === "ok" ? "bg-ok" : "bg-off"}`}
-                style={
-                  node.status === "ok"
-                    ? { animation: "blinkdot 1.6s ease-in-out infinite" }
-                    : undefined
-                }
-              />
-            )}
-            {node.status && (
-              <span className="sr-only">
-                {node.status === "ok" ? "active" : "paused"}
-              </span>
-            )}
-          </span>
-          <span
-            className={`text-[12.5px] font-semibold leading-[1.25] [overflow-wrap:anywhere] ${viewed ? `text-bg ${node.hit ? "underline decoration-map-accent decoration-2 underline-offset-2" : ""}` : node.hit ? "text-map-accent-text" : "text-t1"}`}
-            style={{ maxWidth: PILL_NAME_MAX_W }}
+        {tip(
+          <div
+            role="treeitem"
+            tabIndex={tabIndex}
+            aria-level={ariaLevel}
+            aria-selected={ariaSelected}
+            aria-expanded={ariaExpanded}
+            onKeyDown={onKeyDown}
+            onFocus={onFocus}
+            aria-current={viewed ? "true" : undefined}
+            title={node.desc}
+            aria-label={ariaLabel}
+            onClick={() => onClick(node)}
+            className="flex min-w-0 cursor-pointer select-none items-center gap-[9px] rounded-full text-left"
           >
-            {node.name}
-          </span>
-        </div>
+            <span className="relative flex flex-none">
+              <AppPuck app={node.app} size={24} />
+              {node.status && (
+                <span
+                  aria-hidden="true"
+                  className={`absolute -bottom-px -right-px size-1.5 rounded-full border border-pill ${node.status === "ok" ? "bg-ok" : "bg-off"}`}
+                  style={
+                    node.status === "ok"
+                      ? { animation: "blinkdot 1.6s ease-in-out infinite" }
+                      : undefined
+                  }
+                />
+              )}
+              {node.status && (
+                <span className="sr-only">
+                  {node.status === "ok" ? "active" : "paused"}
+                </span>
+              )}
+            </span>
+            <span
+              className={`text-[12.5px] font-semibold leading-[1.25] [overflow-wrap:anywhere] ${viewed ? `text-bg ${node.hit ? "underline decoration-map-accent decoration-2 underline-offset-2" : ""}` : node.hit ? "text-map-accent-text" : "text-t1"}`}
+              style={{ maxWidth: PILL_NAME_MAX_W }}
+            >
+              {node.name}
+            </span>
+          </div>,
+        )}
         {chip &&
           (canToggle ? (
             <MapTip label={open ? "Collapse" : "Expand"}>
@@ -200,8 +221,13 @@ export const WorkflowPill = memo(function WorkflowPill({
         <RippitLinkButton node={node} />
         <NodeLinkButton node={node} />
       </div>
-      {node.meta && !far && (
-        <div className="pl-3 font-mono text-[10px] text-t3">{node.meta}</div>
+      {meta && !far && (
+        <div
+          className="pl-3 font-mono text-[10px] text-t3 [overflow-wrap:anywhere]"
+          style={{ maxWidth: PILL_NAME_MAX_W + 60 }}
+        >
+          {meta}
+        </div>
       )}
     </div>
   );

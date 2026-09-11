@@ -4,8 +4,10 @@
  * fixture use relative `.ts` imports and `import type` only through `@/`.
  */
 import { buildMap, expandAllSnapshot, initialExpanded, keyOf, pillChip, rootOf, viewedPillId } from "./model.ts";
-import { PROTOTYPE, PROTOTYPE_NOW, PROTOTYPE_VIEWED, big } from "./fixtures/prototype.ts";
-import type { LinkMap, ModuleInfo, ScenarioSummary } from "@/app/lib/api";
+import { dimNodeIds, failedNodeIds, runCounts, runFocusRect, runStates, runSummary, runUnchecked, RUN_FOCUS_MAX_ZOOM, RUN_FOCUS_SPREAD, type FocusRect, type RelatedTraces, type RunState } from "./run.ts";
+import { ZOOM_MIN } from "./tokens.ts";
+import { PROTOTYPE, PROTOTYPE_NOW, PROTOTYPE_RELATED_TRACE, PROTOTYPE_RUN, PROTOTYPE_TRACE, PROTOTYPE_VIEWED, big } from "./fixtures/prototype.ts";
+import type { ExecutionTrace, LinkMap, ModuleInfo, ScenarioSummary } from "@/app/lib/api";
 import type { MapNode, SummaryEntry, WorkflowKey } from "./types.ts";
 
 let checks = 0;
@@ -519,6 +521,153 @@ const base = { viewed: PROTOTYPE_VIEWED, linkMap: PROTOTYPE.linkMap, summaries: 
     });
     assert(withCard.callers[0].nativeUrl === "https://app.gohighlevel.com/v2/location/loc/automation/workflow/x", "a folded pill takes its editor link from the link-map card");
   }
+}
+
+/* ── run replay overlay (run.ts): PROTOTYPE_TRACE over PROTOTYPE_RUN ── */
+{
+  const f = PROTOTYPE_RUN;
+  const key = keyOf(f.viewed);
+  const m = buildMap({ viewed: f.viewed, linkMap: f.linkMap, summaries: f.summaries, expanded: { "wf:ghl:pcf-a": true }, query: "", now: PROTOTYPE_NOW });
+  const id = (stepId: string) => m.byStep.get(`${key}:${stepId}`)!.id;
+  assert(m.roots[0].children.map((n) => n.name).join(",") === "gateway:CustomWebhook,google-sheets:filterRows,http:ActionSendData,builtin:BasicIfElse" && m.byId.get("wf:make:912/wf:make:913")?.parentId === id("7"), "PROTOTYPE_RUN: the viewed chain is 1 → 2 → 7 → 3 and make:913 hangs under module 7");
+  const states = runStates(m, key, PROTOTYPE_TRACE);
+  const viewedSteps = m.flat.filter((n) => n.kind === "step" && n.stepRef?.key === key);
+  assert(viewedSteps.length === 7 && viewedSteps.every((n) => states.has(n.id)), "every rendered step of the viewed workflow has a run state");
+  assert(states.get(id("4")) === "failed", "the failed module is `failed`");
+  assert(["1", "2", "7", "3"].every((sid) => states.get(id(sid)) === "touched"), "the modules the run went through are `touched`");
+  const router = m.byStep.get(`${key}:3`)!;
+  const yes = router.children.find((c) => c.name === "route · yes")!;
+  const no = router.children.find((c) => c.name === "route · no")!;
+  assert(states.get(yes.id) === "touched", "a route with a touched (here: failed) child is `touched`");
+  assert(states.get(no.id) === "untouched" && states.get(id("6")) === "untouched", "the untouched branch — its route and its step — is `untouched`");
+  assert(states.get(id("5")) === "unknown", "a module outside coverage is `unknown`, never `untouched`");
+  assert(states.get("wf:make:912/wf:make:913") === "reached", "the pill attached under a touched calling step is `reached`");
+  /* Copies: states are resolved per step and spread to every rendered copy.
+     The hub model renders each step once, so this guards the contract
+     rather than showing two cards. */
+  const perStep = new Map<string, Set<RunState | undefined>>();
+  for (const n of viewedSteps) {
+    const sid = n.stepRef!.stepId;
+    (perStep.get(sid) ?? perStep.set(sid, new Set()).get(sid)!).add(states.get(n.id));
+  }
+  assert([...perStep].every(([sid, set]) => set.size === 1 && states.get(id(sid)) === [...set][0]), "every rendered copy of a step carries the state `byStep` resolves for it");
+  const others = m.flat.filter((n) => (n.kind === "step" || n.kind === "route") && n.stepRef?.key !== key);
+  assert(others.length > 0 && others.every((n) => !states.has(n.id)), "steps of other workflows (the expanded caller) carry no state");
+  assert(!states.has("wf:ghl:pcf-a/wf:make:913") && !states.has("wf:make:912") && m.callers.every((c) => !states.has(c.id)), "pills not under a viewed step — the viewed root, the callers, a caller's target — carry no state");
+  const dim = dimNodeIds(states);
+  assert(dim.size === 3 && dim.has(id("6")) && dim.has(no.id) && dim.has(id("5")) && !dim.has(id("4")) && !dim.has(yes.id), "dimNodeIds = untouched ∪ unknown (route no, module 6, module 5)");
+  assert(failedNodeIds(states).size === 1 && failedNodeIds(states).has(id("4")), "failedNodeIds = the failed module only");
+  assert(runSummary(PROTOTYPE_TRACE) === "5 of 7 steps reached · 1 failed" && runUnchecked(PROTOTYPE_TRACE) === 1, "runSummary reads '5 of 7 steps reached · 1 failed'; one step unchecked");
+  /* ── framing the run (runFocusRect): pure rect maths, no DOM ── */
+  {
+    const box = (x: number, y: number): FocusRect => ({ x, y, w: 200, h: 60 });
+    const st = (e: [string, RunState][]) => new Map<string, RunState>(e);
+    const rc = (e: [string, FocusRect][]) => new Map<string, FocusRect>(e);
+
+    /* Nothing reached, or nothing measured: the camera is left alone. */
+    assert(runFocusRect(st([]), rc([])) === null, "runFocusRect: an empty overlay never moves the camera");
+    assert(
+      runFocusRect(st([["a", "untouched"], ["b", "unknown"]]), rc([["a", box(0, 0)], ["b", box(400, 0)]])) === null,
+      "runFocusRect: untouched and unchecked nodes never pull the camera — an all-unknown trace returns null"
+    );
+    assert(
+      runFocusRect(st([["a", "touched"]]), rc([["b", box(0, 0)]])) === null,
+      "runFocusRect: a reached node the map has not measured yet returns null (the caller retries next render)"
+    );
+
+    /* The union of the reached nodes, ignoring the ones that did not run. */
+    const spread = runFocusRect(
+      st([["a", "touched"], ["b", "warning"], ["c", "untouched"]]),
+      rc([["a", box(100, 100)], ["b", box(500, 300)], ["c", box(9000, 9000)]])
+    );
+    assert(spread != null && spread.rect.x === 100 && spread.rect.y === 100, "runFocusRect: the frame starts at the top-left of the reached nodes");
+    assert(spread!.rect.w === 600 && spread!.rect.h === 260, "runFocusRect: the frame spans the reached nodes only — the untouched node is outside it");
+    assert(spread!.focusId === null && spread!.count === 2, "runFocusRect: with no failure the whole path is framed and nothing is singled out");
+
+    /* Bounds: never tighter than 1:1, never past the map's own floor. */
+    assert(spread!.maxZoom === RUN_FOCUS_MAX_ZOOM && RUN_FOCUS_MAX_ZOOM === 1, "runFocusRect: never zooms past 1:1 — a short run reads as centred, not filled");
+    assert(spread!.minZoom === ZOOM_MIN, "runFocusRect: clamps to the map's own zoom floor");
+
+    /* One reached node is centred at the same bounds, not blown up. */
+    const single = runFocusRect(st([["a", "touched"]]), rc([["a", box(40, 40)]]));
+    assert(single != null && single.count === 1 && single.rect.w === 200 && single.rect.h === 60, "runFocusRect: a single reached node frames that node");
+    assert(single!.maxZoom === 1 && single!.padding > 0, "runFocusRect: a single node still caps at 1:1 with padding around it");
+
+    /* A failure inside the spread limit: the whole path, failure included. */
+    const withinLimit = runFocusRect(
+      st([["a", "touched"], ["b", "failed"]]),
+      rc([["a", box(0, 0)], ["b", box(600, 0)]])
+    );
+    assert(withinLimit!.focusId === null && withinLimit!.rect.w === 800, "runFocusRect: a compact run with a failure is framed whole — the failure is already inside it");
+
+    /* A failure in a sprawling run: frame the failure, not the sprawl. */
+    const far = runFocusRect(
+      st([["a", "touched"], ["b", "failed"]]),
+      rc([["a", box(0, 0)], ["b", box(RUN_FOCUS_SPREAD + 100, 0)]])
+    );
+    assert(far!.focusId === "b" && far!.rect.x === RUN_FOCUS_SPREAD + 100 && far!.rect.w === 200, "runFocusRect: past the spread limit a failed run frames the failure, not the whole path");
+
+    /* Sprawl without a failure stays whole — there is nothing to single out. */
+    const farOk = runFocusRect(
+      st([["a", "touched"], ["b", "touched"]]),
+      rc([["a", box(0, 0)], ["b", box(RUN_FOCUS_SPREAD + 100, 0)]])
+    );
+    assert(farOk!.focusId === null && farOk!.rect.w === RUN_FOCUS_SPREAD + 300, "runFocusRect: a sprawling run with no failure is still framed whole");
+  }
+
+  /* The terse replay banner reads "5/7 steps" off the same tally the sentence words. */
+  const counts = runCounts(PROTOTYPE_TRACE);
+  assert(counts.total === 7 && counts.reached === 5 && counts.failed === 1 && counts.warned === 0, "runCounts is the tally behind runSummary: 5 reached of 7, 1 failed, 0 warned");
+  /* Normalisation: `touched` + status error is `failed`; a viewed step the trace does not list is `unknown` (so is its route). */
+  const alt: ExecutionTrace = { ...PROTOTYPE_TRACE, nodes: PROTOTYPE_TRACE.nodes.filter((n) => n.nodeId !== "6").map((n) => (n.nodeId === "4" ? { ...n, state: "touched" } : n)) };
+  const s2 = runStates(m, key, alt);
+  assert(s2.get(id("4")) === "failed" && s2.get(id("6")) === "unknown" && s2.get(no.id) === "unknown", "`touched` + status error collapses to `failed`; an unlisted viewed step is `unknown`, and so is its route");
+  const warn: ExecutionTrace = { ...PROTOTYPE_TRACE, nodes: PROTOTYPE_TRACE.nodes.map((n) => (n.nodeId === "7" ? { ...n, status: "warning", warning: "Retried once" } : n)) };
+  assert(runStates(m, key, warn).get(id("7")) === "warning" && runStates(m, key, warn).get("wf:make:912/wf:make:913") === "reached" && runSummary(warn) === "5 of 7 steps reached · 1 failed · 1 with a warning", "a warning module is `warning`, still counts as reached, and its pill is still `reached`");
+  const cold: ExecutionTrace = { ...PROTOTYPE_TRACE, nodes: PROTOTYPE_TRACE.nodes.map((n) => (n.nodeId === "7" ? { ...n, state: "untouched", status: null } : n)) };
+  assert(runStates(m, key, cold).get("wf:make:912/wf:make:913") === "untouched", "a pill under an untouched calling step is `untouched` (grayed with it)");
+  assert(runStates(m, key, null).size === 0 && runStates(m, key, { ...PROTOTYPE_TRACE, supported: false }).size === 0, "no trace, or an unsupported one, gives no states at all");
+  /* The empty overlay is the old map: nothing stated, nothing dimmed, nothing ringed — the triage layer is invisible until a run is replayed. */
+  const none = runStates(m, key, undefined);
+  assert(none.size === 0 && dimNodeIds(none).size === 0 && failedNodeIds(none).size === 0 && m.flat.every((n) => !none.has(n.id)), "with no run replayed the overlay is empty: no node state, no dimmed ids, no failed ids");
+  /* The plain prototype (module 7 absent, no attached pill) overlays the same trace. */
+  const pm = buildMap({ ...base, expanded: {} });
+  const ps = runStates(pm, key, PROTOTYPE_TRACE);
+  const pid = (stepId: string) => pm.byStep.get(`${key}:${stepId}`)!.id;
+  assert(pm.flat.filter((n) => n.kind === "step" && n.stepRef?.key === key).every((n) => ps.has(n.id)) && ps.get(pid("4")) === "failed" && ps.get(pid("6")) === "untouched" && ps.size === 8, "the trace also overlays the plain prototype: 6 steps + 2 routes stated, module 7 ignored");
+}
+
+/* ── related traces (run.ts): PROTOTYPE_RELATED_TRACE over the make:913 pill attached under module 7 ── */
+{
+  const f = PROTOTYPE_RUN;
+  const key = keyOf(f.viewed);
+  const sameStates = (a: ReadonlyMap<string, RunState>, b: ReadonlyMap<string, RunState>) => a.size === b.size && [...a].every(([id, s]) => b.get(id) === s);
+  const pillId = "wf:make:912/wf:make:913";
+  /* Unfolded: the callee's two steps render under the pill. */
+  const m = buildMap({ viewed: f.viewed, linkMap: f.linkMap, summaries: f.summaries, expanded: { "wf:ghl:pcf-a": true, [pillId]: true }, query: "", now: PROTOTYPE_NOW });
+  const s1 = m.byStep.get("make:913:1")!;
+  const s2 = m.byStep.get("make:913:2")!;
+  assert(s1.parentId === pillId && s2.stepRef?.key === "make:913", "the unfolded make:913 pill renders its webhook and sheet steps");
+  const alone = runStates(m, key, PROTOTYPE_TRACE);
+  assert(!alone.has(s1.id) && !alone.has(s2.id) && alone.get(pillId) === "reached", "without a related trace the callee's steps carry no state and its pill is `reached` through the calling step");
+  const related: RelatedTraces = new Map([["make:913", PROTOTYPE_RELATED_TRACE]]);
+  const both = runStates(m, key, PROTOTYPE_TRACE, related);
+  assert(both.get(s1.id) === "touched" && both.get(s2.id) === "failed" && both.get(pillId) === "reached", "a related trace colours the attached pill's steps (webhook touched, sheet step failed) and keeps the pill `reached`");
+  assert([...alone].every(([id, s]) => both.get(id) === s) && both.size === alone.size + 2, "the viewed workflow's states are untouched by the related overlay — only the callee's two steps are added");
+  assert(failedNodeIds(both).size === 2 && failedNodeIds(both).has(s2.id) && dimNodeIds(both).size === dimNodeIds(alone).size, "failedNodeIds gains the related failed step; nothing else dims");
+  assert(runSummary(PROTOTYPE_TRACE) === "5 of 7 steps reached · 1 failed", "runSummary stays per viewed workflow — the related run never folds into its counts");
+  /* A related trace for a workflow that is not on the map is ignored, as is one for the viewed workflow itself. */
+  const offMap: RelatedTraces = new Map([["make:999", PROTOTYPE_RELATED_TRACE], ["make:912", PROTOTYPE_RELATED_TRACE]]);
+  assert(sameStates(runStates(m, key, PROTOTYPE_TRACE, offMap), alone), "a related trace for a workflow not on the map (or for the viewed one) changes nothing");
+  /* No related traces at all — empty map, null, absent — is today's output. */
+  assert(sameStates(runStates(m, key, PROTOTYPE_TRACE, new Map()), alone) && sameStates(runStates(m, key, PROTOTYPE_TRACE, null), alone), "no related traces → identical to the single-trace overlay");
+  /* An unsupported related trace is ignored; a folded pill still reads `reached` from its own run even when the calling step never ran. */
+  assert(sameStates(runStates(m, key, PROTOTYPE_TRACE, new Map([["make:913", { ...PROTOTYPE_RELATED_TRACE, supported: false }]])), alone), "an unsupported related trace is ignored");
+  const cold: ExecutionTrace = { ...PROTOTYPE_TRACE, nodes: PROTOTYPE_TRACE.nodes.map((n) => (n.nodeId === "7" ? { ...n, state: "untouched", status: null } : n)) };
+  const folded = buildMap({ viewed: f.viewed, linkMap: f.linkMap, summaries: f.summaries, expanded: {}, query: "", now: PROTOTYPE_NOW });
+  assert(runStates(folded, key, cold).get(pillId) === "untouched" && runStates(folded, key, cold, related).get(pillId) === "reached", "a pill whose own run is traced is `reached` even under an untouched calling step (the run happened); without the trace it grays with the step");
+  /* Other pills — the viewed root, the callers, a caller's target — still carry no state. */
+  assert(!both.has("wf:make:912") && m.callers.every((c) => !both.has(c.id)) && !both.has("wf:ghl:pcf-a/wf:make:913"), "the related overlay adds no state to the viewed root, the callers, or a caller's copy of the related workflow's pill");
 }
 
 console.log(`\n${checks} model checks pass.`);

@@ -1,17 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { Play, RefreshCw } from "lucide-react";
 import { Execution, ExecutionsResponse, fetchExecutions, NodeId } from "@/app/lib/api";
 import type { ProviderId } from "@/lib/connectors/types";
+import { MapTip } from "@/components/workflowMap/MapTip";
 
 /*
  * Last-N runtime executions of a workflow (Make today). Rows: status dot,
  * when, duration, ops, error; a failing module is a link that selects that
  * node on the canvas. Polls once more while the API reports `refreshing`.
+ * With `onSelectRun`, every row carries "Replay" — the host replays that
+ * execution on the workflow map (`?run=`); the selected row reads pressed.
+ * Run data is fetched on demand and never stored.
  */
 
-const TONE: Record<Execution["status"], { accent: string; text: string; label: string }> = {
+/** One source of truth for run-status colour and wording — the chips here,
+ *  the triage run table and its stat strip all read it. */
+export const RUN_TONE: Record<Execution["status"], { accent: string; text: string; label: string }> = {
   success: { accent: "var(--ok)", text: "var(--ok-text)", label: "ok" },
   warning: { accent: "var(--warn)", text: "var(--warn-text)", label: "warning" },
   error: { accent: "var(--err)", text: "var(--err-text)", label: "failed" },
@@ -32,7 +38,7 @@ export function relativeTime(iso: string | null, now: number = Date.now()): stri
 }
 
 export function LastRunChip({ status, at }: { status: Execution["status"]; at: string | null }) {
-  const t = TONE[status] ?? TONE.unknown;
+  const t = RUN_TONE[status] ?? RUN_TONE.unknown;
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full border px-2 py-[2px] text-[10.5px] font-semibold"
@@ -49,16 +55,40 @@ export function LastRunChip({ status, at }: { status: Execution["status"]; at: s
   );
 }
 
+/** Status chip without the "last run" prefix — timelines and lists. */
+export function RunStatusChip({ status }: { status: Execution["status"] }) {
+  const t = RUN_TONE[status] ?? RUN_TONE.unknown;
+  return (
+    <span
+      className="inline-flex flex-none items-center gap-1.5 rounded-full border px-2 py-[2px] text-[10.5px] font-semibold"
+      style={{
+        color: t.text,
+        borderColor: `color-mix(in srgb, ${t.accent} 40%, transparent)`,
+        background: `color-mix(in srgb, ${t.accent} 10%, transparent)`,
+      }}
+    >
+      <span aria-hidden="true" className="size-[5px] rounded-full" style={{ background: t.accent }} />
+      {t.label}
+    </span>
+  );
+}
+
 export function RunsBody({
   provider,
   externalId,
   onSelectNode,
   onData,
+  selectedRunId = null,
+  onSelectRun,
 }: {
   provider: ProviderId;
   externalId: string;
   onSelectNode?: (nodeId: NodeId) => void;
   onData?: (data: ExecutionsResponse) => void;
+  /** The execution replayed on the map right now (`?run=`). */
+  selectedRunId?: string | null;
+  /** Replay an execution on the map; without it rows carry no replay control. */
+  onSelectRun?: (executionId: string) => void;
 }) {
   const [data, setData] = useState<ExecutionsResponse | null>(null);
   const [error, setError] = useState("");
@@ -94,6 +124,9 @@ export function RunsBody({
   }, [provider, externalId, gen]);
 
   const failures = data?.executions.filter((e) => e.status === "error" || e.status === "incomplete").length ?? 0;
+  /* The API declares whether this platform's runtime can be traced; only
+     then does a row offer replay (never decided from the provider id). */
+  const canReplay = !!onSelectRun && !!data?.supported && data.runtime?.trace !== false;
 
   return (
     <>
@@ -116,7 +149,7 @@ export function RunsBody({
         )}
         {!data && !error && <p className="px-1.5 text-[12px] text-t3">Loading…</p>}
         {data && !data.supported && (
-          <p className="px-1.5 text-[12px] text-t3">{data.reason ?? "Runtime status not available for this platform yet."}</p>
+          <p className="px-1.5 text-[12px] text-t3">{data.reason ?? "Runtime status not available for this platform yet — status, timing and which steps ran are read on demand and never stored."}</p>
         )}
         {data && data.supported && data.executions.length === 0 && (
           <p className="px-1.5 text-[12px] text-t3">
@@ -125,13 +158,16 @@ export function RunsBody({
         )}
         <ul className="flex flex-col gap-1">
           {data?.executions.map((e) => {
-            const t = TONE[e.status] ?? TONE.unknown;
+            const t = RUN_TONE[e.status] ?? RUN_TONE.unknown;
+            const selected = selectedRunId != null && e.executionId === selectedRunId;
             return (
               <li
                 key={e.executionId}
-                className="rounded-control border border-line2 bg-panel px-2.5 py-2"
+                data-selected={selected ? "true" : undefined}
+                className="rounded-control border border-line2 bg-panel px-2.5 py-2 transition-[border-color] duration-[var(--dur-fast)]"
+                style={selected ? { borderColor: "color-mix(in srgb, var(--map-accent) 55%, transparent)" } : undefined}
               >
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span aria-hidden="true" className="size-[7px] rounded-full" style={{ background: t.accent, boxShadow: `0 0 6px ${t.accent}` }} />
                   <span className="text-[12px] font-semibold" style={{ color: t.text }}>
                     {t.label}
@@ -143,12 +179,32 @@ export function RunsBody({
                     {e.durationMs != null ? `${e.durationMs} ms` : ""}
                     {e.operations != null ? ` · ${e.operations} ops` : ""}
                   </span>
+                  {canReplay && (
+                    <MapTip label={selected ? "Replaying this run on the map" : "Replay on map — steps this run did not touch gray out"}>
+                      <button
+                        type="button"
+                        aria-pressed={selected}
+                        aria-label={`Replay run ${e.executionId} on the map`}
+                        onClick={() => onSelectRun?.(e.executionId)}
+                        className={`inline-flex h-6 flex-none cursor-pointer items-center gap-1 rounded-full border px-2 font-mono text-[10.5px] transition-colors duration-[var(--dur-fast)] ${selected ? "border-line-strong bg-hover text-t1" : "border-line text-t2 hover:border-line-strong hover:text-t1"}`}
+                      >
+                        <Play aria-hidden="true" className="size-2.5" />
+                        {selected ? "replaying" : "replay"}
+                      </button>
+                    </MapTip>
+                  )}
                 </div>
-                {(e.errorMessage || e.causeModuleId) && (
+                {(e.errorMessage || e.causeModuleId || e.causeModule?.name) && (
                   <div className="mt-1 flex items-start gap-2 text-[11.5px]">
                     <span className="min-w-0 flex-1 break-words text-t2">
                       {e.errorName && <span className="font-mono text-t3">{e.errorName}: </span>}
                       {e.errorMessage}
+                      {!e.causeModuleId && e.causeModule?.name && (
+                        <span className="block font-mono text-[10.5px] text-t3 [overflow-wrap:anywhere]">
+                          failing step: {e.causeModule.name}
+                          {e.causeModule.appName ? ` (${e.causeModule.appName})` : ""} — not matched to a step on the map
+                        </span>
+                      )}
                     </span>
                     {e.causeModuleId && onSelectNode && (
                       <button
@@ -167,7 +223,9 @@ export function RunsBody({
         </ul>
       </div>
       <p className="flex-none border-t border-line2 px-3.5 py-1.5 text-[11px] text-t3">
-        {data?.fetchedAt ? `As of ${relativeTime(data.fetchedAt)} · status, timing and failing step only — never run data` : "Status, timing and failing step only — never run data"}
+        {data?.fetchedAt
+          ? `As of ${relativeTime(data.fetchedAt)} · status, timing and which steps ran — run data is fetched on demand and never stored`
+          : "Status, timing and which steps ran — run data is fetched on demand and never stored"}
       </p>
     </>
   );

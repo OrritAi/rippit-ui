@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { startTransition } from "react";
+import { startTransition, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Funnel,
@@ -12,18 +12,21 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  Radar,
   Search,
   Sun,
   Workflow,
   type LucideIcon,
 } from "lucide-react";
-import { IconBtn } from "./IconBtn";
+import { CornerBadge, IconBtn } from "./IconBtn";
 import { AvatarMenu } from "./AvatarMenu";
 import { useShell } from "./shell-context";
 import { panelFor, usePanelAvailable } from "./SidePanel";
+import { useConnections } from "@/components/app/ConnectionsProvider";
 import { usePalette } from "@/components/palette/palette-context";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useHydrated } from "@/lib/stored";
+import { recentFailures } from "@/lib/triage";
 
 /** Right-side tooltip for rail buttons (the label is also the aria-label). */
 function Tip({ label, children }: { label: string; children: React.ReactNode }) {
@@ -42,13 +45,27 @@ interface RailItem {
   href: string;
   icon: LucideIcon;
   label: string;
+  /** Tooltip text when it should say more than the label. */
+  tip?: string;
   match: (path: string) => boolean;
+  /** Active state wears the triage accent (the operator layer's home). */
+  accent?: boolean;
 }
+
+/** Triage item: the active state in the triage accent, not the plain fill. */
+const TRIAGE_ACTIVE = {
+  color: "var(--triage)",
+  borderColor: "color-mix(in srgb, var(--triage) 45%, transparent)",
+  background: "color-mix(in srgb, var(--triage) 10%, transparent)",
+} as const;
 
 /*
  * 52px icon rail — the app's primary navigation, kept deliberately small:
- * Workflows (the browse home), Martech (funnel maps), Health, and Assets. The
- * home diamond returns to the dashboard landing.
+ * Workflows (the browse home), Martech (funnel maps), Health, Assets, and
+ * Triage (the operator layer: the run explorer and replay — its badge counts
+ * Make scenarios whose last run failed, from the link map already in memory;
+ * Health keeps its own, structural counts). The home diamond returns to the
+ * dashboard landing.
  */
 export function IconRail() {
   const pathname = usePathname();
@@ -58,12 +75,15 @@ export function IconRail() {
   const { resolvedTheme, setTheme } = useTheme();
   const mounted = useHydrated();
   const available = usePanelAvailable();
+  const { linkMap } = useConnections();
+  const failing = useMemo(() => recentFailures(linkMap).length, [linkMap]);
 
   const items: RailItem[] = [
     { id: "canvas", href: "/w", icon: Workflow, label: "Workflows", match: (p) => p === "/w" || p.startsWith("/w/") },
     { id: "martech", href: "/martech", icon: Funnel, label: "Martech", match: (p) => p.startsWith("/martech") },
     { id: "health", href: "/health", icon: HeartPulse, label: "Health", match: (p) => p.startsWith("/health") },
     { id: "assets", href: "/assets", icon: Link2, label: "Assets", match: (p) => p.startsWith("/assets") },
+    { id: "triage", href: "/triage", icon: Radar, label: "Triage", match: (p) => p.startsWith("/triage"), accent: true },
   ];
 
   // Workflows opens its browser panel as you arrive; health / assets leave the
@@ -95,22 +115,24 @@ export function IconRail() {
                 layoutId="rail-active"
                 aria-hidden="true"
                 transition={{ type: "spring", stiffness: 520, damping: 40, mass: 0.6 }}
-                className="pointer-events-none absolute -left-[9px] top-1/2 h-[18px] w-[2px] -translate-y-1/2 rounded-full bg-t1"
+                className={`pointer-events-none absolute -left-[9px] top-1/2 h-[18px] w-[2px] -translate-y-1/2 rounded-full ${it.accent ? "bg-triage" : "bg-t1"}`}
               />
             )}
-            <Tip label={it.label}>
+            <Tip label={it.tip ?? it.label}>
               <IconBtn
                 icon={it.icon}
-                label={it.label}
+                label={it.tip ?? it.label}
                 title={null}
                 size={34}
                 active={active}
+                style={active && it.accent ? TRIAGE_ACTIVE : undefined}
                 aria-current={active ? "page" : undefined}
                 onMouseEnter={() => router.prefetch(it.href)}
                 onFocus={() => router.prefetch(it.href)}
                 onClick={() => go(it.href)}
               />
             </Tip>
+            {it.id === "triage" && <CornerBadge value={failing} tone="triage" />}
           </span>
         );
       })}

@@ -3,11 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Comment, fetchMentions, Issue, WorkflowCard } from "@/app/lib/api";
 import { useConnections } from "@/components/app/ConnectionsProvider";
+import { issueRunId, runReplayHref } from "@/lib/workflowMap/run";
 
 /*
  * "Needs you" = what is actually broken (error-severity issues), what
  * changed since you last looked, and open threads that mention you. All
- * composed from data we already have (link map) + one mentions query.
+ * composed from data we already have (link map) + one mentions query. A
+ * failed run that names its execution (Make) opens the canvas replaying it
+ * (?run=, plus ?step= for the failing step) instead of the step alone.
  */
 export interface InboxItem {
   key: string;
@@ -55,14 +58,15 @@ export function useInbox() {
       const [provider, refId] = k.split(":");
       const first = issues[0];
       const extra = issues.length - 1;
+      const runId = issueRunId(first);
       return {
         key: `b:${k}`,
         card: cards.get(k) ?? null,
         provider,
         refId,
         reason: `${first.message}${extra > 0 ? ` · +${extra} more` : ""}`,
-        action: first.code === "last-run-failed" ? "See failing step" : first.code.startsWith("dead") || first.code.includes("link") ? "Trace link" : "Open",
-        href: `/w/${provider}/${refId}${first.nodeId != null ? `?step=${encodeURIComponent(String(first.nodeId))}` : ""}`,
+        action: runId ? "Replay on map" : first.code === "last-run-failed" ? "See failing step" : first.code.startsWith("dead") || first.code.includes("link") ? "Trace link" : "Open",
+        href: runId ? runReplayHref(provider, refId, runId, first.nodeId) : `/w/${provider}/${refId}${first.nodeId != null ? `?step=${encodeURIComponent(String(first.nodeId))}` : ""}`,
         issues,
         group: "broken" as const,
       };
