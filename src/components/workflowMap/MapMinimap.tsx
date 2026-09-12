@@ -12,7 +12,8 @@ import type { MapBox } from "./useMapMeasure";
  * Click or drag anywhere on it to move the viewport there. Everything is
  * in inner (content) coordinates; the viewport rectangle comes from the
  * viewport's and the inner's client rects on every scroll (rAF-throttled,
- * passive), so the slack pad around the content never shifts it.
+ * passive), so the slack pad around the content never shifts it. While a
+ * run is replayed, `dimIds` paints the nodes it did not reach at 30 %.
  */
 
 interface Viewport {
@@ -33,12 +34,15 @@ export const MapMinimap = memo(function MapMinimap({
   zoom,
   boxes,
   rowBoxes,
+  dimIds,
 }: {
   scrollElement: () => HTMLDivElement | null;
   innerElement: () => HTMLDivElement | null;
   zoom: number;
   boxes: MapBox[];
   rowBoxes: MapBox[];
+  /** Run replay: nodes the run did not reach or Rippit could not check. */
+  dimIds?: ReadonlySet<string>;
 }) {
   const [vp, setVp] = useState<Viewport | null>(null);
   const raf = useRef(0);
@@ -165,6 +169,7 @@ export const MapMinimap = memo(function MapMinimap({
             height={Math.max(1.5, b.h * scale)}
             rx={b.pill ? Math.max(1, (b.h * scale) / 2) : 1}
             fill={b.pill ? "color-mix(in srgb, var(--map-accent) 70%, transparent)" : "var(--t3)"}
+            opacity={dimIds?.has(b.id) ? 0.3 : undefined}
           />
         ))}
         <rect

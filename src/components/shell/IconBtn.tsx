@@ -66,13 +66,14 @@ export function CornerBadge({
   dot = false,
 }: {
   value?: number | string | null;
-  tone?: "t1" | "warn" | "err" | "ok" | "info";
+  /** `triage`: the triage-layer accent (rail badge for failing runs). */
+  tone?: "t1" | "warn" | "err" | "ok" | "info" | "triage";
   dot?: boolean;
 }) {
   if (!dot && (value === null || value === undefined || value === 0 || value === "")) return null;
   const bg =
-    tone === "warn" ? "var(--warn)" : tone === "err" ? "var(--err)" : tone === "ok" ? "var(--ok)" : tone === "info" ? "var(--chg)" : "var(--t1)";
-  const fg = tone === "t1" ? "var(--bg)" : "#000";
+    tone === "warn" ? "var(--warn)" : tone === "err" ? "var(--err)" : tone === "ok" ? "var(--ok)" : tone === "info" ? "var(--chg)" : tone === "triage" ? "var(--triage)" : "var(--t1)";
+  const fg = tone === "t1" || tone === "triage" ? "var(--bg)" : "#000";
   if (dot) {
     return (
       <span

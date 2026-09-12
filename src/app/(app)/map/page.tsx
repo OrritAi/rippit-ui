@@ -17,7 +17,7 @@ import { SystemMap, cardId } from "@/components/map/SystemMap";
 import { Legend } from "@/components/canvas/Legend";
 
 /* Node-level view renders at most this many auto-selected workflows; bigger
-   estates pick a linked set (readability — see brainstorm/mvp/04). */
+   estates pick a linked set (readability — see rippit-docs/integrations/connector-model.md). */
 const DETAIL_AUTO_MAX = 12;
 
 type Mode = "workflows" | "nodes";

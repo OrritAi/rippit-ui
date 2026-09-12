@@ -11,7 +11,7 @@ import { supabase, supabaseMisconfigured } from "@/lib/supabase";
 type Mode = "signin" | "signup" | "otp" | "otp-verify" | "forgot";
 
 const TITLES: Record<Mode, string> = {
-  signin: "Sign in to your workspace",
+  signin: "Sign in to your organization",
   signup: "Create your account",
   otp: "We’ll email you a one-time code",
   "otp-verify": "Enter the code we emailed you",
@@ -35,9 +35,12 @@ export default function LoginPage() {
     // not bounce to the dashboard.
     if (window.location.hash.includes("type=recovery")) {
       router.replace("/reset-password");
-    } else {
-      router.replace("/dashboard");
+      return;
     }
+    // `?next=` brings an invite link or the admin portal back after sign-in.
+    // Same-origin paths only — never an absolute or protocol-relative URL.
+    const next = new URLSearchParams(window.location.search).get("next");
+    router.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard");
   }, [loading, session, router]);
 
   const run = async (fn: () => Promise<void>) => {
@@ -69,8 +72,9 @@ export default function LoginPage() {
           email,
           password,
           // Confirmation links come back to the domain the app runs on,
-          // regardless of the Supabase project's Site URL default.
-          options: { emailRedirectTo: `${window.location.origin}/login` },
+          // regardless of the Supabase project's Site URL default — and keep
+          // `?next=` so an invite link survives the round trip.
+          options: { emailRedirectTo: `${window.location.origin}/login${window.location.search}` },
         });
         if (error) throw error;
         if (!data.session) {
@@ -94,7 +98,7 @@ export default function LoginPage() {
           email,
           options: {
             shouldCreateUser: true,
-            emailRedirectTo: `${window.location.origin}/login`,
+            emailRedirectTo: `${window.location.origin}/login${window.location.search}`,
           },
         });
         if (error) throw error;

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { IconRail } from "./IconRail";
 import { AnimatePresence, motion } from "framer-motion";
 import { SidePanel, panelFor } from "./SidePanel";
+import { SupportBanner } from "./SupportBanner";
 import { isTypingTarget, overlayOpen, useShell } from "./shell-context";
 import { useStoredJson, writeStored } from "@/lib/stored";
 import { usePalette } from "@/components/palette/palette-context";
@@ -49,6 +50,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     setShortcutHint(mac ? "⌘K" : "Ctrl K");
   }, []);
   const narrow = useMediaQuery("(max-width: 1100px)");
+  const settings = pathname.startsWith("/settings");
   const available = !!panelFor(pathname).Component;
   const show = railOpen && available;
 
@@ -177,13 +179,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
         )}
       </AnimatePresence>
       <main id="main" tabIndex={-1} className="relative flex min-w-0 flex-1 flex-col overflow-hidden outline-none">
-        <header role="search" className="flex flex-none items-center border-b border-line bg-panel px-4 py-2">
-          <button type="button" onClick={palette.open} aria-label="Search workflows, steps and assets" aria-haspopup="dialog" className="flex w-full max-w-2xl items-center gap-2 rounded-control border border-line bg-bg px-3 py-2 text-left text-[13px] text-t2 hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ringc)]">
-            <Search aria-hidden="true" className="size-4 flex-none" />
-            <span className="flex-1">Search workflows, steps and assets…</span>
-            <kbd className="hidden text-[11px] text-t3 sm:block">{shortcutHint}</kbd>
-          </button>
-        </header>
+        <SupportBanner />
+        {/* Settings carries its own 52px portal header instead of the search bar. */}
+        {!settings && (
+          <header role="search" className="flex flex-none items-center border-b border-line bg-panel px-4 py-2">
+            <button type="button" onClick={palette.open} aria-label="Search workflows, steps and assets" aria-haspopup="dialog" className="flex w-full max-w-2xl items-center gap-2 rounded-control border border-line bg-bg px-3 py-2 text-left text-[13px] text-t2 hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ringc)]">
+              <Search aria-hidden="true" className="size-4 flex-none" />
+              <span className="flex-1">Search workflows, steps and assets…</span>
+              <kbd className="hidden text-[11px] text-t3 sm:block">{shortcutHint}</kbd>
+            </button>
+          </header>
+        )}
         <motion.div key={pathname} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease: EASE }} className="flex min-h-0 flex-1 flex-col">
           {children}
         </motion.div>

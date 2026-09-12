@@ -61,6 +61,15 @@ const CHECKS = [
   ["dark --map-accent-text on --bg", "#0ea5e9", DARK_BG, 4.5],
   ["light --map-accent on --bg (non-text)", "#0284c7", LIGHT_BG, 3],
   ["light --map-accent-text on --bg", "#0369a1", LIGHT_BG, 4.5],
+  // Triage layer accent (--triage): rules, borders and the active Replay
+  // tool's fill are graphic; the "Replay · in this run" header is text;
+  // the filled tool and the rail badge put --bg on the accent.
+  ["dark --triage on --bg (non-text)", "#f59e0b", DARK_BG, 3],
+  ["dark --triage as text on --bg", "#f59e0b", DARK_BG, 4.5],
+  ["dark --bg on --triage fill (active Replay tool, rail badge)", DARK_BG, "#f59e0b", 4.5],
+  ["light --triage on --bg (non-text)", "#b45309", LIGHT_BG, 3],
+  ["light --triage as text on --bg", "#b45309", LIGHT_BG, 4.5],
+  ["light --bg on --triage fill (active Replay tool, rail badge)", LIGHT_BG, "#b45309", 4.5],
   // Workflow pill surface: color-mix(in srgb, --map-accent 6%, --pill) — the
   // expandable-node tint. Text on it must stay readable in both themes.
   ["dark --text on pill tint (accent 6% over #101014)", "#f4f4f5", "#101921", 4.5],

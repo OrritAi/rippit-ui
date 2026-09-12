@@ -51,6 +51,13 @@ import type { MapEdge } from "./useMapMeasure";
  * connection's label; click / Enter / Space call `onSelectEdge`, and the
  * selected group keeps the hot look via `data-selected`. Hit paths carry no
  * data-from/to, so geometry scripts never read them.
+ *
+ * Run replay: `dimIds` (nodes the run did not reach / could not check) and
+ * `failIds` (the failed node). An edge with BOTH ends dimmed fades like an
+ * edge outside a selected connection (`.wm-edge-rundim`); the failed node's
+ * incoming edge carries the error colour (`.wm-edge-runfail`). A selected
+ * connection still wins while one is open. Classes only — geometry never
+ * changes.
  */
 
 const NUM = /-?\d+(?:\.\d+)?/g;
@@ -86,6 +93,8 @@ export const MapEdges = memo(function MapEdges({
   selectedGroup,
   focusedEdge,
   onSelectEdge,
+  dimIds,
+  failIds,
 }: {
   edges: MapEdge[];
   selectedId: string | null;
@@ -104,6 +113,9 @@ export const MapEdges = memo(function MapEdges({
    *  rest of the group at 45 %, everything else dimmed to 18 %. */
   focusedEdge: string | null;
   onSelectEdge: (edgeKey: string) => void;
+  /** Run replay: nodes to dim (untouched ∪ unknown) and the failed nodes. */
+  dimIds?: ReadonlySet<string>;
+  failIds?: ReadonlySet<string>;
 }) {
   const lastZoom = useRef(zoom);
   const paths = useRef(new Map<string, SVGPathElement>());
@@ -221,8 +233,21 @@ export const MapEdges = memo(function MapEdges({
      edge itself) is hot, the rest of the group stays readable, everything
      else dims. */
   const focusedStub = focusedEdge ? edges.find((m) => m.key === focusedEdge)?.stub : undefined;
+  /* Run replay: dim an edge whose both ends are dimmed (a trunk when every
+     stub off it is), colour the failed node's incoming edge. */
+  const runState = (e: MapEdge): string => {
+    if (!dimIds && !failIds) return "";
+    if (e.kind === "trunk") {
+      if (e.fanIn && failIds?.has(e.to)) return " wm-edge-runfail";
+      const stubs = edges.filter((m) => m.stub === e.key);
+      return stubs.length > 0 && stubs.every((m) => dimIds?.has(m.from) && dimIds?.has(m.to)) ? " wm-edge-rundim" : "";
+    }
+    if (failIds?.has(e.to)) return " wm-edge-runfail";
+    if (dimIds?.has(e.from) && dimIds?.has(e.to)) return " wm-edge-rundim";
+    return "";
+  };
   const focusState = (e: MapEdge): string => {
-    if (!selectedGroup) return "";
+    if (!selectedGroup) return runState(e);
     const gk = infoOf.get(e.key)?.group ?? e.key;
     if (gk !== selectedGroup) return " wm-edge-dim";
     if (!focusedEdge) return " wm-edge-groupd";

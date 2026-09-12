@@ -3,7 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import { fetchConnectorCatalog, startOAuth } from "@/app/lib/api";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, Check, ChevronDown, Puzzle } from "lucide-react";
+import { ArrowRight, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { allConnectors } from "@/lib/connectors";
@@ -13,31 +13,11 @@ import { ConsentGate, useLegalGates } from "@/components/connect/ConsentGate";
 import BookmarkletCard from "@/components/connect/BookmarkletCard";
 import { bookmarkletHref } from "@/lib/bookmarklet";
 import { useOrigin } from "@/lib/use-origin";
+import { AppPuck } from "@/components/shared/AppPuck";
+import { Card, CardHeader } from "@/components/shared/Card";
+import { ConnectionRow, worstHealth } from "@/components/settings/ConnectionRow";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
-
-export function ConnectorGlyph({
-  connector,
-  size = 38,
-}: {
-  connector: ConnectorDescriptor;
-  size?: number;
-}) {
-  const col = connector.brandColor;
-  return (
-    <div
-      aria-hidden="true"
-      className="flex flex-none items-center justify-center rounded-[11px] border border-white/25 font-mono text-[13px] font-bold text-white"
-      style={{
-        width: size,
-        height: size,
-        background: `linear-gradient(180deg, color-mix(in oklab, ${col} 55%, #000), color-mix(in oklab, ${col} 42%, #000))`,
-      }}
-    >
-      {connector.glyph}
-    </div>
-  );
-}
 
 /** Per-connector connect flow: a credentials form or extension hand-off. */
 /** "Connect with {platform}" — official OAuth path (server-configured). */
@@ -246,22 +226,33 @@ export function ConnectFlow({
   );
 }
 
+/** What the settings page hands each nested connection row. */
+export interface ConnectionActions {
+  syncing: Set<string>;
+  canSync: (c: Connection) => boolean;
+  sync: (c: Connection) => void;
+  disconnect: (c: Connection) => Promise<void>;
+}
+
 /**
- * The connector card grid: every registered platform, its connection status,
- * and an expand-in-place connect flow. Used by the landing page and the
- * Connections settings page.
+ * Platforms: every platform once. Its connections sit nested under it;
+ * the chevron opens the connect flow ("Add another" / "Connect"). Members
+ * get the connected platforms and their rows, nothing to click.
  */
 export function ConnectorCatalog({
   connections,
   onAdd,
+  manage,
+  actions,
+  loading,
   pollingProvider,
   onExpandChange,
 }: {
   connections: Connection[];
-  onAdd: (
-    provider: ProviderId,
-    values: Record<string, string>
-  ) => Promise<void>;
+  onAdd: (provider: ProviderId, values: Record<string, string>) => Promise<void>;
+  manage: boolean;
+  actions: ConnectionActions;
+  loading?: boolean;
   /** Provider whose extension flow is being awaited (spinner state). */
   pollingProvider?: ProviderId | null;
   onExpandChange?: (provider: ProviderId | null) => void;
@@ -283,97 +274,106 @@ export function ConnectorCatalog({
     };
   }, []);
 
-  return (
-    <div className="flex flex-col gap-3">
-      {allConnectors().map((connector) => {
-        const conns = connections.filter((c) => c.provider === connector.id);
-        const isOpen = expanded === connector.id;
-        const connected = conns.length > 0;
-        const needsReauth = conns.some((c) => c.status === "needs_reauth");
-        const panelId = `connect-${connector.id}`;
-        return (
-          <div
-            key={connector.id}
-            className="overflow-hidden rounded-card border border-line bg-panel backdrop-blur-[14px]"
-          >
-            <button
-              onClick={() => setExpanded(isOpen ? null : connector.id)}
-              aria-expanded={isOpen}
-              aria-controls={panelId}
-              className="flex w-full cursor-pointer items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-hover"
-            >
-              <ConnectorGlyph connector={connector} />
-              <div className="min-w-0 flex-1">
-                <p className="text-[14px] font-semibold">{connector.label}</p>
-                <p className="[overflow-wrap:anywhere] text-[12px] text-t3">
-                  {connector.description}
-                </p>
-              </div>
-              {connected ? (
-                needsReauth ? (
-                  <span className="flex items-center gap-1.5 text-[11.5px] font-semibold text-warn-text">
-                    Needs reauth
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1.5 text-[11.5px] font-semibold text-ok-text">
-                    <Check aria-hidden="true" className="size-3" />
-                    Connected
-                    {conns.length > 1 ? ` · ${conns.length}` : ""}
-                  </span>
-                )
-              ) : (
-                <span className="text-[11.5px] font-semibold text-t3">
-                  Not connected
-                </span>
-              )}
-              <ChevronDown
-                aria-hidden="true"
-                className={`size-3.5 text-t3 transition-transform ${
-                  isOpen ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-            <AnimatePresence initial={false}>
-              {isOpen && (
-                <motion.div
-                  id={panelId}
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.3, ease: EASE }}
-                >
-                  <div className="border-t border-line2 px-4 py-4">
-                    <ConnectFlow
-                      connector={connector}
-                      onSubmit={(values) => onAdd(connector.id, values)}
-                      waiting={pollingProvider === connector.id}
-                      oauthAvailable={oauthProviders.has(connector.id)}
-                    />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        );
-      })}
+  const rows = allConnectors()
+    .map((connector) => ({ connector, conns: connections.filter((c) => c.provider === connector.id) }))
+    .filter(({ conns }) => manage || conns.length > 0);
 
-      {/* extensibility signal */}
-      <div className="flex items-center gap-3 rounded-card border border-dashed border-line-strong px-4 py-3.5 text-t3">
-        <div
-          aria-hidden="true"
-          className="flex size-[38px] flex-none items-center justify-center rounded-[11px] border border-line"
-        >
-          <Puzzle className="size-4" />
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardHeader title="Platforms" meta={connections.length ? `${connections.length} connected` : undefined} />
+        {rows.length === 0 && (
+          <p className="border-t border-line2 px-4 py-3 text-[12.5px] text-t3">{loading ? "loading…" : "Nothing connected yet."}</p>
+        )}
+        {rows.map(({ connector, conns }) => {
+          const isOpen = expanded === connector.id;
+          const connected = conns.length > 0;
+          const health = worstHealth(conns);
+          const panelId = `connect-${connector.id}`;
+          const state = !connected
+            ? { text: "not connected", cls: "text-t3" }
+            : health === "warn"
+              ? { text: "needs reauth", cls: "text-warn-text" }
+              : { text: conns.length > 1 ? `connected · ${conns.length}` : "connected", cls: "text-ok-text" };
+          const header = (
+            <>
+              <AppPuck app={connector.id} size={34} status={connected ? health : undefined} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-semibold">{connector.label}</span>
+                {!connected && <span className="mt-px block text-[12px] text-t3 [text-wrap:pretty]">{connector.description}</span>}
+              </span>
+              <span className={`flex-none font-mono text-[11px] ${state.cls}`}>{state.text}</span>
+            </>
+          );
+          return (
+            <div key={connector.id} className="border-t border-line2">
+              {manage ? (
+                <button
+                  type="button"
+                  onClick={() => setExpanded(isOpen ? null : connector.id)}
+                  aria-expanded={isOpen}
+                  aria-controls={panelId}
+                  className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors duration-[var(--dur-fast)] hover:bg-hover"
+                >
+                  {header}
+                  <ChevronDown
+                    aria-hidden="true"
+                    className={`size-3.5 flex-none text-t3 transition-transform duration-[180ms] ease-[var(--ease-out)] ${isOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+              ) : (
+                <div className="flex items-center gap-3 px-4 py-3">{header}</div>
+              )}
+              {conns.map((conn) => (
+                <ConnectionRow
+                  key={conn.id}
+                  connection={conn}
+                  manage={manage}
+                  syncing={actions.syncing.has(conn.id)}
+                  busy={!actions.canSync(conn)}
+                  onSync={() => actions.sync(conn)}
+                  onDisconnect={() => actions.disconnect(conn)}
+                />
+              ))}
+              <AnimatePresence initial={false}>
+                {isOpen && (
+                  <motion.div
+                    id={panelId}
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.22, ease: EASE }}
+                    className="overflow-hidden"
+                  >
+                    <div className={`px-4 pb-3.5 pl-[62px] ${connected ? "border-t border-line2 pt-3" : ""}`}>
+                      <ConnectFlow
+                        connector={connector}
+                        onSubmit={(values) => onAdd(connector.id, values)}
+                        waiting={pollingProvider === connector.id}
+                        oauthAvailable={oauthProviders.has(connector.id)}
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
+      </Card>
+
+      {manage ? (
+        <div className="flex items-center gap-3 rounded-card border border-dashed border-line-strong px-4 py-3.5">
+          <div aria-hidden="true" className="grid size-[34px] flex-none place-items-center rounded-card border border-line text-[15px] text-t3">
+            +
+          </div>
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold">More platforms coming</p>
+            <p className="text-[12px] text-t3">Zapier, n8n, Close and more — rippit is built connector-first.</p>
+          </div>
         </div>
-        <div>
-          <p className="text-[14px] font-semibold text-t2">
-            More platforms coming
-          </p>
-          <p className="text-[12px]">
-            Zapier, n8n, Close, and more — Rippit is built connector-first.
-          </p>
-        </div>
-      </div>
+      ) : (
+        <p className="text-[12.5px] text-t3">Connections are managed by owners and admins.</p>
+      )}
     </div>
   );
 }

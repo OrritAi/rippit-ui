@@ -302,19 +302,16 @@ export function AcceptedTermsList() {
 
   if (!rows) return null;
   if (!rows.length) {
-    return <p className="text-[12.5px] text-t3">You have not accepted any terms yet.</p>;
+    return <p className="border-t border-line2 px-4 py-3 text-[12.5px] text-t3">No terms accepted yet.</p>;
   }
 
   return (
-    <ul className="space-y-1.5">
+    <ul>
       {rows.map((row) => (
-        <li key={`${row.slug}-${row.version}`} className="flex items-baseline gap-2 text-[12.5px]">
-          <Check
-            aria-hidden="true"
-            className={`size-3 flex-none translate-y-0.5 ${row.current ? "text-ok-text" : "text-t3"}`}
-          />
-          <span className="min-w-0 flex-1 [overflow-wrap:anywhere] text-t2">{row.title}</span>
-          <span className="flex-none text-[11.5px] text-t3">
+        <li key={`${row.slug}-${row.version}`} className="flex items-center gap-2.5 border-t border-line2 px-4 py-2.5 text-[13px]">
+          <Check aria-hidden="true" className={`size-3 flex-none ${row.current ? "text-ok-text" : "text-t3"}`} />
+          <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{row.title}</span>
+          <span className="flex-none font-mono text-[11px] text-t3">
             {new Date(row.acceptedAt).toLocaleDateString()}
             {!row.current && " · superseded"}
           </span>

@@ -212,7 +212,7 @@ export function CommentsThread({
           inputRef={inputRef}
         />
         <div className="flex items-center justify-between">
-          <span className="text-[11px] text-t3">Visible to everyone in this workspace</span>
+          <span className="text-[11px] text-t3">Visible to everyone in this organization</span>
           <button
             type="button"
             onClick={submit}

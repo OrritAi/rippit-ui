@@ -80,6 +80,13 @@
   --map-accent: #0284c7;
   --map-accent-text: #0369a1;
 
+  /* Triage layer accent — the operator flows layered over the visualization
+     (replay banner, the active Replay tool, "Replay · in this run", the
+     Triage rail item when active). Applied only while one of those is
+     active; the map, header, sidebar and rail otherwise render without it.
+     Graphic role 3:1 and text role 4.5:1 on --bg (scripts/contrast-audit.mjs). */
+  --triage: #b45309;
+
   /* Legacy aliases used by existing pages */
   --background: var(--bg);
   --foreground: var(--text);
@@ -150,6 +157,8 @@
   --map-accent: #0ea5e9;
   --map-accent-text: #0ea5e9;
 
+  --triage: #f59e0b;
+
   --primary-hover: #d4d4d8;
 
   --sidebar: #0c0c0f;
@@ -185,6 +194,7 @@
   --color-line-strong: var(--line-strong);
   --color-map-accent: var(--map-accent);
   --color-map-accent-text: var(--map-accent-text);
+  --color-triage: var(--triage);
 
   /* shadcn/ui mapping (monochrome accent rule: primary = text on bg) */
   --color-background: var(--bg);
@@ -487,6 +497,44 @@ body {
 }
 .wm-group:hover .wm-edge-groupd {
   stroke-opacity: 0.8;
+}
+/* Run replay (`?run=`): the map root carries `.wm-run`, every node of the
+   viewed workflow carries `data-run` (lib/workflowMap/run.ts). Untouched
+   nodes gray out but stay in the tree — pointer events kept, still
+   selectable, never hidden; unchecked ones read as dashed. Failed / warning
+   nodes wear a ring in the status colour (the selection ring, inline, wins
+   while selected). Touched and reached nodes are unchanged. Attributes
+   only — nothing here animates, so LITE mode needs no exception. */
+.wm-run [data-run="untouched"] {
+  opacity: 0.32;
+  filter: grayscale(1);
+}
+.wm-run [data-run="unknown"] {
+  opacity: 0.6;
+  border-style: dashed;
+}
+.wm-run [data-run="failed"] {
+  box-shadow: 0 0 0 1.5px var(--err), 0 0 16px color-mix(in srgb, var(--err) 35%, transparent);
+}
+.wm-run [data-run="warning"] {
+  box-shadow: 0 0 0 1.5px var(--warn), 0 0 16px color-mix(in srgb, var(--warn) 35%, transparent);
+}
+/* Edges between two dimmed nodes fade like edges outside a selected
+   connection; the failed node's incoming edge carries the error colour. */
+.wm-edge-rundim {
+  stroke: var(--text) !important;
+  stroke-opacity: 0.22;
+  animation-play-state: paused;
+}
+.wm-group:hover .wm-edge-rundim {
+  stroke-width: 1.5;
+  stroke-opacity: 0.45;
+  animation-play-state: running;
+}
+.wm-edge-runfail {
+  stroke: var(--err) !important;
+  stroke-opacity: 1;
+  stroke-width: 2;
 }
 /* Pairing focus on the two nodes: a shape-following accent outline with a
    soft glow and one 500 ms pulse on change (two identical keyframes so a

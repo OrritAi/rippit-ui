@@ -1,19 +1,33 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
+  acceptMyInvite,
   clearApiCaches,
+  exitSupport,
+  fetchCurrentWorkspace,
+  fetchMyInvites,
   fetchWorkspaces,
   getActiveWorkspaceId,
+  getSupport,
   setActiveWorkspaceId,
+  Role,
   Workspace,
 } from "@/app/lib/api";
 
 /*
- * The active workspace — the collaboration scope every API call is made
+ * The active organization — the collaboration scope every API call is made
  * in (X-Rippit-Workspace). Loaded once per signed-in user; switching
  * persists the choice, clears caches and remounts the data providers
  * (layout keys on `current.id`).
+ *
+ * Support mode (platform staff "View as org"): the organization comes from
+ * /workspaces/current under the support header, there is no switcher, and
+ * the viewer is treated as a member — view-only.
+ *
+ * Pending invites addressed to the signed-in email are accepted once per
+ * page load: that is what makes "joins on first sign-in" true.
  */
 
 interface WorkspaceCtx {
@@ -21,6 +35,8 @@ interface WorkspaceCtx {
   workspaces: Workspace[];
   loading: boolean;
   error: string;
+  /** Set while platform staff view an organization read-only. */
+  support: { workspaceId: string; name: string } | null;
   switchTo: (id: string) => void;
   refresh: () => void;
 }
@@ -30,6 +46,7 @@ const Ctx = createContext<WorkspaceCtx>({
   workspaces: [],
   loading: true,
   error: "",
+  support: null,
   switchTo: () => {},
   refresh: () => {},
 });
@@ -38,14 +55,39 @@ export function useWorkspace() {
   return useContext(Ctx);
 }
 
+/** The viewer's role in the active organization. Support views count as member. */
+export function useRole(): Role {
+  const { current, support } = useWorkspace();
+  if (support) return "member";
+  const role = current?.role;
+  return role === "owner" || role === "admin" ? role : "member";
+}
+
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // Result keyed by load generation → "loading" is derived, never set
   // synchronously inside the effect.
   const [result, setResult] = useState<{ gen: number; current?: string; workspaces?: Workspace[]; error?: string } | null>(null);
   const [gen, setGen] = useState(0);
+  const [support] = useState(() => getSupport());
+  const invitesChecked = useRef(false);
 
   useEffect(() => {
     let live = true;
+    if (support) {
+      fetchCurrentWorkspace()
+        .then((org) => {
+          if (!live) return;
+          const ws: Workspace = { id: org.id, name: org.name || support.name, slug: org.slug, role: "member", status: org.status, created_at: org.createdAt };
+          setResult({ gen, current: ws.id, workspaces: [ws] });
+        })
+        .catch(() => {
+          // The organization is gone or the viewer is not staff: leave support mode.
+          if (live) exitSupport();
+        });
+      return () => {
+        live = false;
+      };
+    }
     fetchWorkspaces()
       .then(({ current, workspaces: list }) => {
         if (!live) return;
@@ -67,7 +109,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     return () => {
       live = false;
     };
-  }, [gen]);
+  }, [gen, support]);
 
   const switchTo = useCallback((id: string) => {
     setActiveWorkspaceId(id);
@@ -76,6 +118,35 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refresh = useCallback(() => setGen((g) => g + 1), []);
+
+  // Invites waiting for this email: accept them, say so, offer to open the
+  // organization. Once per page load, never in a support view.
+  const loaded = !!result && result.gen === gen && !result.error;
+  useEffect(() => {
+    if (support || !loaded || invitesChecked.current) return;
+    invitesChecked.current = true;
+    let live = true;
+    (async () => {
+      const { invites } = await fetchMyInvites();
+      let joined = 0;
+      for (const inv of invites) {
+        try {
+          const res = await acceptMyInvite(inv.id);
+          joined++;
+          const name = res.organizationName || inv.organizationName || "the organization";
+          toast.success(`You joined ${name}`, {
+            action: res.workspaceId ? { label: "Open", onClick: () => switchTo(res.workspaceId) } : undefined,
+          });
+        } catch {
+          /* expired or already handled — the next sign-in tries again */
+        }
+      }
+      if (live && joined > 0) refresh();
+    })().catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [support, loaded, switchTo, refresh]);
 
   const value = useMemo<WorkspaceCtx>(() => {
     const fresh = result && result.gen === gen ? result : null;
@@ -86,9 +157,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       workspaces,
       loading: !fresh,
       error: fresh?.error ?? "",
+      support,
       switchTo,
       refresh,
     };
-  }, [result, gen, switchTo, refresh]);
+  }, [result, gen, support, switchTo, refresh]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

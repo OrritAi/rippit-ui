@@ -144,7 +144,7 @@ export default function ActivityPage() {
         )}
       </ViewBar>
       <ViewBody width={600}>
-        <ViewTitle title={mode === "inbox" ? "Inbox" : mode === "all" ? "Everything" : mode === "mine" ? "Mine" : "Watched"} sub={mode === "inbox" ? "mentions · watched and owned workflows · failed runs" : "workspace activity, newest first"} />
+        <ViewTitle title={mode === "inbox" ? "Inbox" : mode === "all" ? "Everything" : mode === "mine" ? "Mine" : "Watched"} sub={mode === "inbox" ? "mentions · watched and owned workflows · failed runs" : "organization activity, newest first"} />
         {error && (
           <p role="alert" className="mb-3 text-[13px] text-err-text">
             {error}

@@ -27,13 +27,13 @@ export interface SidePanelDef {
 }
 
 export const SIDE_PANELS: SidePanelDef[] = [
-  // Dashboard, the system map and Martech are full-bleed: no side panel at all.
-  { id: "none", title: "", match: (p) => p.startsWith("/dashboard") || p.startsWith("/map") || p.startsWith("/martech") },
+  // Dashboard, the system map, Martech and Settings are full-bleed: no side panel at all.
+  { id: "none", title: "", match: (p) => p.startsWith("/dashboard") || p.startsWith("/map") || p.startsWith("/martech") || p.startsWith("/settings") },
   { id: "inbox", title: "Needs you", match: (p) => p.startsWith("/inbox"), Component: InboxPanel, useCount: useInboxCount, autoOpen: true },
   { id: "activity", title: "Notifications", match: (p) => p.startsWith("/activity"), Component: NotificationsPanel, useCount: useNotificationsCount, autoOpen: true },
   { id: "mentions", title: "Mentions", match: (p) => p.startsWith("/mentions"), Component: MentionsPanel, useCount: useMentionsCount, autoOpen: true },
   { id: "assets", title: "Assets", match: (p) => p.startsWith("/assets"), Component: AssetsPanel },
-  // Everything else (workflows, dashboard, system map, settings) browses workflows.
+  // Everything else (workflows, health, workflow pages) browses workflows.
   { id: "workflows", title: "Workflows", match: () => true, Component: WorkflowBrowser, useCount: useWorkflowCount, autoOpen: true },
 ];
 
