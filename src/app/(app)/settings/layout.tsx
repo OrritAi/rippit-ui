@@ -8,11 +8,14 @@ import { useConnections } from "@/components/app/ConnectionsProvider";
 import { usePalette } from "@/components/palette/palette-context";
 import { PortalHeader } from "@/components/shared/PortalHeader";
 import { SettingsProvider, useSettings } from "@/components/settings/SettingsProvider";
+import { useFullBleed } from "@/components/shell/shell-context";
 import { useHydrated } from "@/lib/stored";
 
 /*
  * Settings: a 52px portal header, a 200px section rail and a 760px content
- * column. Sections are routes so a link can land on one directly.
+ * column. Sections are routes so a link can land on one directly. The portal
+ * header stands in for the shell's search bar — `useFullBleed("header")` is
+ * what asks for that.
  */
 const SECTIONS = [
   { href: "/settings/organization", label: "Organization" },
@@ -36,6 +39,7 @@ function SettingsFrame({ children }: { children: React.ReactNode }) {
   const { members } = useSettings();
   const { connections } = useConnections();
   const palette = usePalette();
+  useFullBleed("header");
   // Show the shortcut that actually works on this platform (after hydration).
   const hydrated = useHydrated();
   const shortcut = hydrated && !/Mac|iPhone|iPad/.test(navigator.platform) ? "Ctrl K" : "⌘K";

@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowUpRight,
   Bell,
   BellRing,
   Activity,
+  Clock3,
   HeartPulse,
   History,
   Info,
-  ScrollText,
   MessageSquare,
   Network,
   NotebookPen,
@@ -29,18 +29,24 @@ import { useShell } from "@/components/shell/shell-context";
 import type { StatusPillInfo } from "@/lib/connectors/types";
 
 /*
- * Everything you can do to this workflow, one 46px row: browser toggle ·
+ * Everything you can do to this workflow, one 52px row: browser toggle ·
  * identity (puck, name, status, changes pill, owner, watch, meta) · sync ·
  * system map · History · tools (Info · Changes · Comments · Notes) · Open in.
- * Under 880px the owner chip and meta hide and Open-in becomes an icon.
+ * Under 880px of bar width the owner chip, the meta line and the changes
+ * pill hide, History collapses to its glyph and Open-in becomes an icon.
+ * The width is read from the box on every render as well as from the
+ * ResizeObserver: observer delivery is frame-driven and does not arrive
+ * while the pane is hidden, and the bar must be right the moment it shows.
  *
- * History (ScrollText — lucide's `History` glyph is already the Changes dock
- * tool's) navigates to this workflow's run log rather than opening a dock:
- * one entry point into the runs, shared with /triage. While a run is being
- * replayed it is filled in the triage accent, so the map says where the user
- * came from; with no run the row is exactly as it was. A tool with `accent`
- * reads the same way.
+ * History (Clock3 — lucide's `History` glyph is already the Changes dock
+ * tool's) opens this workflow's run log as a surface over the same page
+ * rather than navigating: one entry point into the runs, shared with
+ * /triage. While a run is being replayed it is filled in the triage accent,
+ * so the map says where the user came from; with no run the row is exactly
+ * as it was. A tool with `accent` reads the same way.
  */
+const NARROW_AT = 880;
+
 export type DockTool = "health" | "info" | "changes" | "comments" | "runs" | "notes";
 
 export interface ToolSpec {
@@ -85,7 +91,8 @@ export function ActionBar({
   activeTool,
   onTool,
   mapHref,
-  historyHref,
+  onHistory,
+  historyCount,
   historyUnavailable = null,
   historyAccent = false,
   historyBadge,
@@ -116,8 +123,11 @@ export function ActionBar({
   onTool: (t: DockTool) => void;
   /** System-map link — rendered only when given. */
   mapHref?: string | null;
-  /** This workflow's run log — rendered only when the platform has runs. */
-  historyHref?: string | null;
+  /** Open this workflow's history surface — rendered only when the platform
+   *  has runs. A surface over this page, never a navigation. */
+  onHistory?: (() => void) | null;
+  /** Runs stored for this workflow, beside the label. */
+  historyCount?: number | null;
   /** Why history is unavailable here. Set → the control renders disabled and
    *  says so, rather than vanishing and leaving the user hunting for it. */
   historyUnavailable?: string | null;
@@ -131,16 +141,25 @@ export function ActionBar({
   accountTitle: string;
 }) {
   const { railOpen, toggleRail } = useShell();
-  const ref = useRef<HTMLDivElement>(null);
+  // The bar's own box, held as state rather than a ref: the width is read
+  // from it during render, and a ref would be neither a legal read there nor
+  // able to trigger the correction.
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
   const [narrow, setNarrow] = useState(false);
 
   useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([e]) => setNarrow(e.contentRect.width < 880));
-    ro.observe(el);
+    if (!box) return;
+    const ro = new ResizeObserver(([e]) => setNarrow(e.contentRect.width < NARROW_AT));
+    ro.observe(box);
     return () => ro.disconnect();
-  }, []);
+  }, [box]);
+
+  // The observer is the live channel; this is the synchronous one. A pane
+  // that was hidden while it resized gets no callback, so the box is read
+  // again on every render and the answer corrected before paint. Zero width
+  // is a box that is not laid out at all — keep the last honest answer.
+  const measured = box?.clientWidth ?? 0;
+  if (measured > 0 && (measured < NARROW_AT) !== narrow) setNarrow(measured < NARROW_AT);
 
   const initials = ownerName
     ? ownerName
@@ -153,7 +172,7 @@ export function ActionBar({
     : "—";
 
   return (
-    <div ref={ref} className="z-[5] flex min-h-[52px] flex-none items-center gap-3 border-b border-line bg-panel px-4 py-2 backdrop-blur-[14px]">
+    <div ref={setBox} className="z-[5] flex min-h-[52px] flex-none items-center gap-3 border-b border-line bg-panel px-4 py-2 backdrop-blur-[14px]">
       {railOpen ? (
         <IconBtn icon={PanelLeftClose} label="Hide the workflow browser ( [ )" size={26} onClick={toggleRail} />
       ) : (
@@ -173,7 +192,8 @@ export function ActionBar({
         <ExpandableText text={name} lines={1} title={`${name} — ${accountTitle}`} />
       </h1>
       <StatusPill pill={statusPill} pulse={live} />
-      {changes > 0 && (
+      {/* The count is already the blue badge on the browser row. */}
+      {changes > 0 && !narrow && (
         <button type="button" onClick={() => onTool("changes")} className="cursor-pointer" aria-label={`${changes} changes since you last looked — open Changes`}>
           <StatusPill pill={{ label: `${changes} change${changes > 1 ? "s" : ""}`, tone: "info" }} dot={false} />
         </button>
@@ -230,33 +250,33 @@ export function ActionBar({
             <TooltipContent side="bottom" sideOffset={6}>View in system map</TooltipContent>
           </Tooltip>
         )}
-        {(historyHref || historyUnavailable) && (
+        {(onHistory || historyUnavailable) && (
           <span className="relative inline-flex">
             <Tooltip>
               <TooltipTrigger asChild>
-                {historyHref ? (
-                  <Link
-                    href={historyHref}
-                    aria-label="History"
-                    style={historyAccent ? ACCENT_STYLE : undefined}
-                    className="inline-flex size-[26px] items-center justify-center rounded-control border border-line text-t3 transition-colors duration-[var(--dur-fast)] hover:border-line-strong hover:text-t1"
-                  >
-                    <ScrollText aria-hidden="true" className="size-[13px]" />
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    aria-disabled="true"
-                    aria-label={`History — ${historyUnavailable}`}
-                    onClick={(e) => e.preventDefault()}
-                    className="inline-flex size-[26px] cursor-default items-center justify-center rounded-control border border-line text-t3 opacity-50"
-                  >
-                    <ScrollText aria-hidden="true" className="size-[13px]" />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  aria-disabled={onHistory ? undefined : "true"}
+                  aria-label={onHistory ? "History" : `History — ${historyUnavailable}`}
+                  onClick={onHistory ? () => onHistory() : (e) => e.preventDefault()}
+                  style={historyAccent ? ACCENT_STYLE : undefined}
+                  className={
+                    narrow
+                      ? `inline-flex size-[26px] flex-none items-center justify-center rounded-control border border-line text-t3 ${onHistory ? "cursor-pointer transition-colors duration-[var(--dur-fast)] hover:border-line-strong hover:text-t1" : "cursor-default opacity-50"}`
+                      : `inline-flex h-[26px] flex-none items-center gap-[7px] rounded-control border border-line px-2.5 text-[11.5px] font-semibold text-t2 ${onHistory ? "cursor-pointer transition-colors duration-[var(--dur-fast)] hover:border-line-strong hover:text-t1" : "cursor-default opacity-50"}`
+                  }
+                >
+                  <Clock3 aria-hidden="true" className="size-[13px] flex-none" />
+                  {!narrow && (
+                    <>
+                      History
+                      {historyCount != null && <span className="tabular font-mono text-[10px] opacity-70">{historyCount}</span>}
+                    </>
+                  )}
+                </button>
               </TooltipTrigger>
               <TooltipContent side="bottom" sideOffset={6}>
-                {historyHref ? "History" : `History — ${historyUnavailable}`}
+                {onHistory ? "History — every stored run for this workflow" : `History — ${historyUnavailable}`}
               </TooltipContent>
             </Tooltip>
             <CornerBadge value={historyBadge} tone={historyBadgeTone ?? "t1"} />

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ApiError, type ExecutionPayload, type ExecutionsResponse, type ExecutionTrace, type WorkflowCard } from "@/app/lib/api";
+import { ApiError, type ExecutionBundles, type ExecutionPayload, type ExecutionsResponse, type ExecutionTrace, type ProjectedField, type WorkflowCard } from "@/app/lib/api";
 import { getConnector } from "@/lib/connectors";
 import type { ProviderId } from "@/lib/connectors/types";
 import { appName } from "@/lib/apps";
@@ -12,6 +12,7 @@ import type { MapNode, WorkflowRef } from "@/lib/workflowMap/types";
 import { AppPuck } from "@/components/shared/AppPuck";
 import { CopyJsonButton, JsonBlock, KvRow, Section } from "@/components/shared/DetailPanelKit";
 import { IssuesSection } from "@/components/shared/IssuesSection";
+import { StepData } from "@/components/projection/StepData";
 import { TriggerConditions } from "@/components/shared/TriggerConditions";
 import { AssetsSection, assetHref } from "@/components/shared/AssetsSection";
 import { SurveyStructureView } from "@/components/shared/SurveyStructure";
@@ -29,10 +30,10 @@ import { nodeLink } from "./nodeLink";
  * cannot show, the changed/comments note) → Issues (when any) → Runs (Make
  * only, when there is run data) → "Replay · in this run" while a run is
  * replayed (triage-accented header; state, bundle count, warning / error
- * text; the entry node loads its input on demand, other nodes say plainly
- * what the platform does not expose; for a related workflow's step the
- * section is "Replay · in the related run" and names that execution) → the
- * step's own sections once its detail arrives (trigger
+ * text; the entry node loads its input on demand; for a related workflow's
+ * step the section is "Replay · in the related run" and names that
+ * execution) → "Step data", every module's real input and output for the
+ * replayed run → the step's own sections once its detail arrives (trigger
  * conditions, assets, survey structure) → Advanced details, folded. No
  * "What it does" prose: the card already carries the step summary, and a
  * pill's name and status are on the pill.
@@ -55,6 +56,11 @@ export function MapSidebar({
   run = null,
   runRelated = false,
   onLoadPayload,
+  bundles = null,
+  bundlesLoading = false,
+  projectedFields,
+  onOverrideField,
+  onTestStep,
 }: {
   node: MapNode;
   viewed: WorkflowRef;
@@ -76,6 +82,16 @@ export function MapSidebar({
   runRelated?: boolean;
   /** Fetch the run's input for a node — through from the platform, shown once, never stored. */
   onLoadPayload?: (node: string) => Promise<ExecutionPayload>;
+  /** Every step's input and output for the replayed run — fetched through by
+   *  the host, held for as long as the run is open, never stored. */
+  bundles?: ExecutionBundles | null;
+  bundlesLoading?: boolean;
+  /** Per-field provenance from an active projection, keyed by node id. Absent
+   *  means every value came from the platform (`observed`). */
+  projectedFields?: Record<string, ProjectedField[]>;
+  /** Replace one field of this step's input and re-project below it. */
+  onOverrideField?: (nodeId: string, key: string, current: unknown) => void;
+  onTestStep?: (nodeId: string) => void;
 }) {
   const router = useRouter();
   const viewedKey = keyOf(viewed);
@@ -236,6 +252,26 @@ export function MapSidebar({
         />
       )}
 
+      {/* Step data: what this step received and returned in the replayed run.
+          Mounted for a step of the viewed workflow only — a related
+          workflow's bundles belong to its own run, not this one. */}
+      {isStep && runActive && !runRelated && node.stepRef && (
+        <StepData
+          key={`bundles:${run?.execution?.executionId ?? "run"}:${node.stepRef.stepId}`}
+          bundles={bundles}
+          loading={bundlesLoading}
+          nodeId={node.stepRef.stepId}
+          projected={projectedFields?.[node.stepRef.stepId]}
+          onOverride={onOverrideField}
+          onTestStep={onTestStep}
+          unsupportedReason={
+            runs && runs.runtime && runs.runtime.bundles === false
+              ? `${connector.label} exposes no step payloads; a ${connector.shortLabel} projection reads contact fields instead.`
+              : null
+          }
+        />
+      )}
+
       {isStep && detail.status === "loading" && (
         <p role="status" className="text-[12px] text-t3">
           Loading details
@@ -271,8 +307,8 @@ const rateLimitText = (platform: string, retryAfter: number | null | undefined) 
  * clamped). The entry node (webhook request) — or the cause module of an
  * incomplete run (its bundle) — carries "Load input": fetched through from
  * the platform at that moment, rendered once, never stored by Rippit.
- * Every other node says plainly what the platform's API does not expose
- * and links to the run on the platform. For a related workflow's step the
+ * What every *other* step received and returned is the Step data section
+ * below, on the same fetch-through terms. For a related workflow's step the
  * section is "Replay · in the related run" and names that execution first.
  */
 function InThisRun({
@@ -376,16 +412,12 @@ function InThisRun({
               </p>
             )}
           </div>
-        ) : (
-          <p className="m-0 mt-1 font-mono text-[10.5px] leading-[1.5] text-t3 [overflow-wrap:anywhere]">
-            {platform} does not expose this step’s data.{" "}
-            {run.links.execution && (
-              <a href={run.links.execution} target="_blank" rel="noopener noreferrer" className="font-semibold text-t2 underline-offset-2 hover:underline">
-                Open in {platform} ↗
-              </a>
-            )}
-          </p>
-        )}
+        ) : null}
+        {/* The step's own input and output live in the Step data section
+            below (`components/projection/StepData.tsx`). Until 2026-09-12 this
+            branch carried a note saying the platform did not expose them; Make
+            does, so the note is gone rather than reworded. A platform that
+            genuinely exposes none says so in Step data, in its own words. */}
       </div>
     </Section>
   );

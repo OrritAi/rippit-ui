@@ -93,23 +93,6 @@ export function executionToRow(
   };
 }
 
-const WINDOW_MS: Record<RunWindow, number> = {
-  "1h": 3_600_000,
-  "24h": 86_400_000,
-  "7d": 7 * 86_400_000,
-  "30d": 30 * 86_400_000,
-};
-
-/** Whether a run started inside the selected window. Only the fallback path
- *  needs this — `/runs` windows server-side. A run with no start time is
- *  kept rather than silently dropped. */
-export function withinWindow(startedAt: string | null, window: RunWindow, now: number = Date.now()): boolean {
-  if (!startedAt) return true;
-  const t = new Date(startedAt).getTime();
-  if (!Number.isFinite(t)) return true;
-  return now - t <= WINDOW_MS[window];
-}
-
 /* ─── Step hints ─────────────────────────────────────────────────────────── */
 
 /*
@@ -123,11 +106,18 @@ const STEP_HINTS = new Map<string, string>();
 const hintKey = (provider: string, workflowExternalId: string, executionId: string) => `${provider}:${workflowExternalId}:${executionId}`;
 
 export function rememberRunSteps(provider: string, workflowExternalId: string, executionId: string, reached: number, total: number): void {
-  if (total > 0) STEP_HINTS.set(hintKey(provider, workflowExternalId, executionId), `${reached}/${total} steps`);
+  if (total > 0) STEP_HINTS.set(hintKey(provider, workflowExternalId, executionId), `${reached}/${total}`);
 }
 
-export function runStepsHint(r: RunRow): string | null {
+/** "7/9" — the bare ratio, for a table cell that has its own column head. */
+export function runStepsRatio(r: RunRow): string | null {
   return STEP_HINTS.get(hintKey(r.provider, r.workflowExternalId, r.executionId)) ?? null;
+}
+
+/** "7/9 steps" — the ratio where it stands on its own in a line of meta. */
+export function runStepsHint(r: RunRow): string | null {
+  const ratio = runStepsRatio(r);
+  return ratio ? `${ratio} steps` : null;
 }
 
 /* ─── Number formatting ──────────────────────────────────────────────────── */

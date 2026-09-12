@@ -6,7 +6,8 @@
 import { buildMap, expandAllSnapshot, initialExpanded, keyOf, pillChip, rootOf, viewedPillId } from "./model.ts";
 import { dimNodeIds, failedNodeIds, runCounts, runFocusRect, runStates, runSummary, runUnchecked, RUN_FOCUS_MAX_ZOOM, RUN_FOCUS_SPREAD, type FocusRect, type RelatedTraces, type RunState } from "./run.ts";
 import { ZOOM_MIN } from "./tokens.ts";
-import { PROTOTYPE, PROTOTYPE_NOW, PROTOTYPE_RELATED_TRACE, PROTOTYPE_RUN, PROTOTYPE_TRACE, PROTOTYPE_VIEWED, big } from "./fixtures/prototype.ts";
+import { PROTOTYPE, PROTOTYPE_NOW, PROTOTYPE_PROJECTION, PROTOTYPE_RELATED_TRACE, PROTOTYPE_RUN, PROTOTYPE_TRACE, PROTOTYPE_VIEWED, big } from "./fixtures/prototype.ts";
+import { projectionAsTrace } from "../projection/overlay.ts";
 import type { ExecutionTrace, LinkMap, ModuleInfo, ScenarioSummary } from "@/app/lib/api";
 import type { MapNode, SummaryEntry, WorkflowKey } from "./types.ts";
 
@@ -668,6 +669,26 @@ const base = { viewed: PROTOTYPE_VIEWED, linkMap: PROTOTYPE.linkMap, summaries: 
   assert(runStates(folded, key, cold).get(pillId) === "untouched" && runStates(folded, key, cold, related).get(pillId) === "reached", "a pill whose own run is traced is `reached` even under an untouched calling step (the run happened); without the trace it grays with the step");
   /* Other pills — the viewed root, the callers, a caller's target — still carry no state. */
   assert(!both.has("wf:make:912") && m.callers.every((c) => !both.has(c.id)) && !both.has("wf:ghl:pcf-a/wf:make:913"), "the related overlay adds no state to the viewed root, the callers, or a caller's copy of the related workflow's pill");
+}
+
+/* ── projection overlay (projection/overlay.ts): PROTOTYPE_PROJECTION ──
+   The engine's output is shaped as an ExecutionTrace precisely so the canvas
+   needs no second code path. These assertions are what stops that drifting. */
+{
+  const f = PROTOTYPE_RUN;
+  const key = keyOf(f.viewed);
+  const m = buildMap({ viewed: f.viewed, linkMap: f.linkMap, summaries: f.summaries, expanded: { "wf:ghl:pcf-a": true }, query: "", now: PROTOTYPE_NOW });
+  const asTrace = projectionAsTrace(PROTOTYPE_PROJECTION);
+  const states = runStates(m, key, asTrace);
+  const of = (stepId: string): RunState | null => states.get(m.byStep.get(`${key}:${stepId}`)!.id) ?? null;
+
+  assert(of("1") === "touched" && of("3") === "touched", "a projection lights the path it would take through the same overlay as a recorded run");
+  assert(of("4") === "untouched", "a step whose gate evaluated false is untouched — greyed, not failed");
+  assert(of("5") === "unknown", "a step whose gate could not be evaluated is unknown, never untouched");
+  assert(failedNodeIds(states).size === 0, "a projection never produces a failed node: `failed` means a run happened");
+  assert(asTrace.nodes.every((n) => n.status === null), "every projected node carries a null status — success and failure are recorded-run words");
+  assert(asTrace.entry === null && asTrace.related.length === 0, "a projection offers no recorded input and claims no related run");
+  assert(dimNodeIds(states).size >= 2, "untouched and unknown steps dim under a projection exactly as under a run");
 }
 
 console.log(`\n${checks} model checks pass.`);

@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback, useMemo, useRef, use } from "react";
 import { useSearchParams, notFound } from "next/navigation";
 import Link from "next/link";
 import { Activity, ArrowUpRight, MessageSquare, PanelRight, X } from "lucide-react";
-import { ApiError, fetchExecutions, fetchExecutionTrace, fetchComments, fetchWorkflowChanges, markWorkflowSeen } from "@/app/lib/api";
-import type { ExecutionsResponse, ExecutionTrace, NodeId, RelatedRun, RunRow, WorkflowChanges } from "@/app/lib/api";
+import { ApiError, fetchBundles, fetchExecutions, fetchExecutionTrace, fetchComments, fetchWorkflowChanges, markWorkflowSeen, projectWorkflow } from "@/app/lib/api";
+import type { ExecutionBundles, ExecutionsResponse, ExecutionTrace, NodeId, Projection, RelatedRun, RunRow, WorkflowChanges } from "@/app/lib/api";
 import { getConnector, isProviderId } from "@/lib/connectors";
 import type { WorkflowData } from "@/lib/connectors/types";
 import { WorkflowRef } from "@/lib/portals";
@@ -13,6 +13,16 @@ import { useConnections, useWorkflowIndex } from "@/components/app/ConnectionsPr
 import { usePaletteScope } from "@/components/palette/palette-context";
 import { ActionBar, type DockTool, type ToolSpec } from "@/components/canvas/ActionBar";
 import { CaptureNotice } from "@/components/shared/CaptureBadge";
+import { HistoryHeader } from "@/components/history/HistoryHeader";
+import { RunList } from "@/components/history/RunList";
+import { RunSwitcher } from "@/components/history/RunSwitcher";
+import { useRunHistory } from "@/components/history/useRunHistory";
+import { Walk } from "@/components/walk/Walk";
+import { DryRunPanel } from "@/components/projection/DryRunPanel";
+import { DiffVerdict } from "@/components/projection/DiffVerdict";
+import { OverrideNotice } from "@/components/projection/OverrideBracket";
+import { openingStage, stagesFor } from "@/lib/walk";
+import { useFullBleed } from "@/components/shell/shell-context";
 import { DockHost, DockTitle } from "@/components/canvas/DockHost";
 import { WorkflowMap, type StepRequest } from "@/components/workflowMap/WorkflowMap";
 import { SIDEBAR_W } from "@/lib/workflowMap/tokens";
@@ -36,6 +46,16 @@ import { writeStored, readStored, type RecentEntry } from "@/lib/stored";
  * shares the map's right slot with the node sidebar — one occupant at a
  * time. (Health, info, changes and notes docks exist in the codebase but are
  * not mounted here: the canvas is the page.)
+ * `?history=1` turns the page into the history surface: the shell's rail and
+ * browser column step out (`useFullBleed`), the ActionBar is replaced by the
+ * history header, and the canvas ground shifts to `--plane`. The surface has
+ * **two levels, and `?run=` decides which**: absent is the run list filling
+ * the body, present is that run on the canvas with the run itself as the page
+ * title (`RunSwitcher`). Back steps out one level at a time and its label
+ * names where it goes. Showing both at once was tried three ways — a bottom
+ * split, a filmstrip, a status rail — and all three halved something worth
+ * keeping. `/w/{provider}/{id}/history` is the same surface as a deep link.
+ * Esc leaves it, after the map's own layers.
  * `?step=` selects that step of the viewed workflow (`?node=` is read as an
  * alias); the palette and dock rows select through the same request.
  * `?run=<executionId>` replays one execution on the map (Make): its trace is
@@ -60,6 +80,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
   const searchParams = useSearchParams();
   const requestedStep = searchParams.get("step") ?? searchParams.get("node");
   const requestedRun = searchParams.get("run");
+  const requestedHistory = searchParams.get("history") === "1";
   const { linkMap, connections } = useConnections();
   const index = useWorkflowIndex();
 
@@ -86,6 +107,17 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
   // The run panel is the slot's lowest-priority occupant. Closing it leaves
   // the run replayed; the banner's control brings it back. A new run opens it.
   const [runPanelOpen, setRunPanelOpen] = useState(true);
+  // The history surface is a state of this page, not a route of its own.
+  const [historyOpen, setHistoryOpen] = useState(requestedHistory);
+  useFullBleed(historyOpen ? "full" : null);
+  /* The walk replaces the canvas for one run; the dry-run inset sits beside
+     it. Neither is URL state: a projection is not stored, and a link that
+     restored one would imply it was. */
+  const [walkRun, setWalkRun] = useState<string | null>(null);
+  const [dryOpen, setDryOpen] = useState(false);
+  const [projection, setProjection] = useState<Projection | null>(null);
+  const [projecting, setProjecting] = useState(false);
+  const [overrides, setOverrides] = useState<Record<string, unknown>>({});
   // The step the run panel marks — the last one selected from it or elsewhere.
   const [activeStepId, setActiveStepId] = useState<string | null>(requestedStep);
   const [relatedTraces, setRelatedTraces] = useState<ReadonlyMap<string, ExecutionTrace>>(() => new Map());
@@ -189,12 +221,12 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
 
   useEffect(() => {
     if (!data) return;
-    document.title = `${data.summary.name} — Rippit`;
+    document.title = historyOpen ? `${data.summary.name} — History — Rippit` : `${data.summary.name} — Rippit`;
     const prev = readStored<RecentEntry[]>("rippit.recent", []);
     const next: RecentEntry[] = [{ provider, id, name: data.summary.name, at: Date.now() }, ...prev.filter((r) => !(r.provider === provider && r.id === id))].slice(0, 8);
     writeStored("rippit.recent", next);
     window.dispatchEvent(new Event("rippit:recent"));
-  }, [data, provider, id]);
+  }, [data, provider, id, historyOpen]);
 
   useEffect(() => {
     let live = true;
@@ -300,6 +332,40 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
   }, []);
   const clearRun = useCallback(() => setRunParam(null), [setRunParam]);
 
+  // `?history=1` mirrors `?run=`: replaceState, never a navigation. Closing
+  // takes the log's own filters with it, so the workflow's URL goes back to
+  // being the workflow's.
+  const setHistory = useCallback((open: boolean) => {
+    const url = new URL(window.location.href);
+    if (open) {
+      url.searchParams.set("history", "1");
+    } else {
+      for (const k of ["history", "page", "size", "status"]) url.searchParams.delete(k);
+    }
+    window.history.replaceState(window.history.state, "", url.toString());
+    setHistoryOpen(open);
+  }, []);
+  const openHistory = useCallback(() => setHistory(true), [setHistory]);
+  /* The history surface has two levels and `?run=` decides which: absent is
+     the list, present is that run on the canvas. Back steps out one level at
+     a time — a run returns to the list, the list leaves history — so the
+     label can always name where it goes. */
+  const historyLevel = historyOpen ? (runId ? 2 : 1) : 0;
+  const historyBack = useCallback(() => {
+    setWalkRun(null);
+    if (runId) clearRun();
+    else setHistory(false);
+  }, [runId, clearRun, setHistory]);
+  /* Picking a run always lands on the canvas, never back inside a walk the
+     reader had left open on a different run. */
+  const pickRun = useCallback(
+    (executionId: string) => {
+      setWalkRun(null);
+      setRunParam(executionId);
+    },
+    [setRunParam],
+  );
+
   // Select one of this workflow's steps on the map (palette, dock rows).
   const selectStep = useCallback((nodeId: NodeId) => {
     setTool(null);
@@ -345,6 +411,10 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
 
   const [refreshing, setRefreshing] = useState(false);
   const now = useNow();
+  /* One fetch of this workflow's runs, shared by the level-1 list and the
+     level-2 switcher — so the two agree on counts and switching level never
+     re-hits the network. */
+  const runHistory = useRunHistory(provider, id);
 
   // Manual sync: live-fetch through the connector (also refreshes the stored
   // copy server-side), then re-pull runs + changes so everything reflects it.
@@ -382,6 +452,54 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
 
   /* ---------- render ---------- */
 
+  /* The walk needs the same bundles the node panel does, but it replaces the
+     canvas — so the map is unmounted and cannot be the one fetching them. */
+  const [walkBundles, setWalkBundles] = useState<ExecutionBundles | null>(null);
+  const [walkBundlesLoading, setWalkBundlesLoading] = useState(false);
+  useEffect(() => {
+    if (!walkRun) return;
+    let live = true;
+    setWalkBundlesLoading(true);
+    fetchBundles(provider, id, walkRun)
+      .then((b) => live && setWalkBundles(b))
+      .catch(() => live && setWalkBundles(null))
+      .finally(() => live && setWalkBundlesLoading(false));
+    return () => {
+      live = false;
+    };
+  }, [walkRun, provider, id]);
+
+  const walkStages = useMemo(
+    () => (walkRun ? stagesFor(data?.summary.modules ?? [], trace, walkBundles) : []),
+    [walkRun, data, trace, walkBundles],
+  );
+
+  /* An override replaces one field of a step's input and re-projects the
+     subtree below it. Everything above keeps what actually happened, which is
+     what makes the bracket honest. */
+  const onOverrideField = useCallback(
+    (nodeId: string, key: string, current: unknown) => {
+      const next = { ...overrides, [nodeId]: { ...(overrides[nodeId] as object ?? {}), [key]: current } };
+      setOverrides(next);
+      setProjecting(true);
+      projectWorkflow(provider, id, { runId: runId ?? undefined, overrides: next })
+        .then(setProjection)
+        .catch(() => setProjection(null))
+        .finally(() => setProjecting(false));
+    },
+    [overrides, provider, id, runId],
+  );
+
+  /* "opportunity.value 400 → 2500" — the pair, not the result. What did I
+     change is a question the new value alone cannot answer. */
+  const overrideDetail = useMemo(() => {
+    const entries = Object.entries(overrides);
+    if (entries.length === 0) return "";
+    const [nodeId, fields] = entries[0];
+    const key = Object.keys((fields as object) ?? {})[0];
+    return key ? `step ${nodeId}'s ${key} edited` : `step ${nodeId} edited`;
+  }, [overrides]);
+
   if (loading) return <LoadingState message={`Loading ${connector.nouns.workflow}…`} />;
   if (error) return <ErrorCard title={`Failed to load ${connector.nouns.workflow}`} message={error} onRetry={() => setReloadKey((k) => k + 1)} />;
   if (!data) return null;
@@ -404,8 +522,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
   const needsReauth = connection?.status === "needs_reauth";
   const failures = runs?.executions?.filter((e) => e.status === "error" || e.status === "incomplete").length ?? 0;
   // Header tools: Comments only. The runs themselves live behind the History
-  // icon, which navigates to this workflow's log instead of opening a dock —
-  // one entry point, shared with /triage.
+  // control, which opens the log as a surface over this page instead of a
+  // dock — one entry point into them, shared with /triage.
   const tools: ToolSpec[] = [{ id: "comments", label: "Comments", badge: wfOpenComments > 0 ? wfOpenComments : null, tone: "t1" }];
   // History follows the runtime the API declares, never a hard-coded provider
   // name: a platform lights up here the day its runtime lands. Until the
@@ -413,10 +531,10 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
   // rather than flickering in. Without one it stays visible but disabled and
   // says why — hiding it just sends people hunting through Triage.
   const runtimeSupported = runs ? runs.supported : provider === "make";
-  const historyHref = runtimeSupported ? `/w/${provider}/${encodeURIComponent(id)}/history` : null;
   const historyUnavailable = runtimeSupported
     ? null
     : runs?.reason || `no run history for ${connector.label} yet`;
+  const runCount = runs?.executions?.length ?? null;
 
   const runSlot =
     runRow && runPanelOpen ? (
@@ -435,27 +553,50 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
 
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <ActionBar
-        app={provider}
-        name={summary.name}
-        statusPill={meta.statusPill}
-        live={live}
-        changes={changes?.unseen ?? 0}
-        onRefresh={refresh}
-        refreshing={refreshing}
-        meta={metaLine || null}
-        tools={tools}
-        activeTool={tool}
-        onTool={openTool}
-        historyHref={historyHref}
-        historyUnavailable={historyUnavailable}
-        historyAccent={runId != null}
-        historyBadge={failures > 0 ? failures : null}
-        historyBadgeTone={failures > 0 ? "err" : "t1"}
-        nativeUrl={nativeUrl}
-        providerLabel={connector.shortLabel}
-        accountTitle={accountTitle}
-      />
+      {historyOpen ? (
+        <HistoryHeader
+          onBack={historyBack}
+          backLabel={historyLevel === 2 ? "All runs" : "Back"}
+          onDryRun={() => setDryOpen((v) => !v)}
+          title={
+            historyLevel === 2 ? (
+              <RunSwitcher
+                history={runHistory}
+                current={runHistory.rows.find((r) => r.executionId === runId) ?? null}
+                onPick={pickRun}
+                onWalk={(executionId) => {
+                  setRunParam(executionId);
+                  setWalkRun(executionId);
+                }}
+                now={now}
+              />
+            ) : undefined
+          }
+        />
+      ) : (
+        <ActionBar
+          app={provider}
+          name={summary.name}
+          statusPill={meta.statusPill}
+          live={live}
+          changes={changes?.unseen ?? 0}
+          onRefresh={refresh}
+          refreshing={refreshing}
+          meta={metaLine || null}
+          tools={tools}
+          activeTool={tool}
+          onTool={openTool}
+          onHistory={runtimeSupported ? openHistory : null}
+          historyCount={runtimeSupported ? runCount : null}
+          historyUnavailable={historyUnavailable}
+          historyAccent={runId != null}
+          historyBadge={failures > 0 ? failures : null}
+          historyBadgeTone={failures > 0 ? "err" : "t1"}
+          nativeUrl={nativeUrl}
+          providerLabel={connector.shortLabel}
+          accountTitle={accountTitle}
+        />
+      )}
 
       {needsReauth && (
         <div role="status" className="flex flex-none items-center gap-2 border-b border-line2 px-3 py-1.5 text-[12px] text-warn-text" style={{ background: "color-mix(in srgb, var(--warn) 8%, transparent)" }}>
@@ -474,8 +615,11 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
         </div>
       )}
 
-      {/* Run replay: the map below grays what this execution did not touch. */}
-      {runId && (
+      {/* Run replay: the map below grays what this execution did not touch.
+          At level 2 of the history surface the run is already the page title,
+          so the banner would say it twice — the design gives that canvas no
+          permanent run chrome at all. */}
+      {runId && historyLevel !== 2 && (
         <div className="px-3 pb-2">
           <RunBanner
             runId={runId}
@@ -499,6 +643,59 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
         </p>
       )}
 
+      {historyLevel === 1 ? (
+        /* Level 1 owns the whole body. A permanent split showing the list and
+           the canvas at once was built and rejected — it halved both. */
+        <RunList
+          history={runHistory}
+          activeRunId={runId}
+          onPick={pickRun}
+          onWalk={(executionId) => {
+            setRunParam(executionId);
+            setWalkRun(executionId);
+          }}
+        />
+      ) : walkRun ? (
+        <Walk
+          key={`walk:${walkRun}`}
+          stages={walkStages}
+          startAt={openingStage(walkStages)}
+          bundles={walkBundles}
+          bundlesLoading={walkBundlesLoading}
+          runLabel={`${summary.name}, run ${walkRun.slice(-6)}`}
+          onExit={() => setWalkRun(null)}
+        />
+      ) : (
+      <>
+      {projection?.verdict && (
+        <DiffVerdict verdict={projection.verdict} />
+      )}
+      {Object.keys(overrides).length > 0 && (
+        <OverrideNotice
+          count={Object.keys(overrides).length}
+          detail={overrideDetail}
+          onReset={() => {
+            setOverrides({});
+            setProjection(null);
+          }}
+        />
+      )}
+      <div className="flex min-h-0 flex-1">
+      {dryOpen && (
+        <DryRunPanel
+          provider={provider}
+          externalId={id}
+          busy={projecting}
+          onClose={() => setDryOpen(false)}
+          onProject={(input) => {
+            setProjecting(true);
+            projectWorkflow(provider, id, { input, overrides })
+              .then(setProjection)
+              .catch(() => setProjection(null))
+              .finally(() => setProjecting(false));
+          }}
+        />
+      )}
       <WorkflowMap
         key={`${provider}:${id}`}
         viewed={self}
@@ -516,7 +713,15 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
         onClearRun={clearRun}
         relatedTraces={relatedTraces}
         onRelatedWanted={onRelatedWanted}
+        ground={historyOpen ? "plane" : "viewport"}
+        projection={projection}
+        onOverrideField={onOverrideField}
       />
+      </div>
+      </>
+      )}
+
+
     </div>
   );
 }

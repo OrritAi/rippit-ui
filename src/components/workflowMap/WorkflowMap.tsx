@@ -10,11 +10,14 @@ import {
   type ReactNode,
 } from "react";
 import {
+  fetchBundles,
   fetchExecutionPayload,
+  type ExecutionBundles,
   type ExecutionPayload,
   type ExecutionsResponse,
   type ExecutionTrace,
   type LinkMap,
+  type Projection,
   type RelatedRun,
   type ScenarioSummary,
 } from "@/app/lib/api";
@@ -55,6 +58,7 @@ import {
 import type { MapNode, WorkflowKey, WorkflowRef } from "@/lib/workflowMap/types";
 import { groupEdges } from "@/lib/workflowMap/edgeGroups";
 import { MapEdges } from "./MapEdges";
+import { projectionAsTrace } from "@/lib/projection/overlay";
 import { MapEdgeSidebar } from "./MapEdgeSidebar";
 import { MapMinimap } from "./MapMinimap";
 import { MapSidebar, type DetailState } from "./MapSidebar";
@@ -157,6 +161,16 @@ export interface WorkflowMapViewProps {
   /** Related runs whose workflow is rendered as a pill (one per workflow):
    *  the host fetches their traces once and passes them as `relatedTraces`. */
   onRelatedWanted?: (runs: RelatedRun[]) => void;
+  /** The canvas ground. `plane` is the history surface's: a shade off the
+   *  reading view's, so the surface is unmistakably not it. */
+  ground?: "viewport" | "plane";
+  /** An active projection: per-node would-run states and per-field
+   *  provenance. Structurally an `ExecutionTrace`, so the run overlay renders
+   *  it unchanged — the node panel branches on its presence to tell an
+   *  observed value from a computed one. */
+  projection?: Projection | null;
+  /** Replace one field of a step's input and re-project below it. */
+  onOverrideField?: (nodeId: string, key: string, current: unknown) => void;
 }
 
 const TOOLS_KEY = "rippit.map.toolsHidden";
@@ -190,6 +204,9 @@ export function WorkflowMapView({
   onLoadPayload,
   relatedTraces = null,
   onRelatedWanted,
+  ground = "viewport",
+  projection = null,
+  onOverrideField,
 }: WorkflowMapViewProps) {
   const viewedKey = keyOf(viewed);
   const headingId = useId();
@@ -436,17 +453,27 @@ export function WorkflowMapView({
     }
     return out;
   }, [relatedOnMap, relatedTraces]);
-  const states = useMemo(
-    () => runStates(model, viewedKey, run, relatedByKey),
-    [model, viewedKey, run, relatedByKey],
+  /* While a projection is active it drives the overlay in place of the
+     recorded trace — the canvas shows the path this input *would* take. The
+     recorded trace stays as `run` for the sidebar's "Replay · in this run",
+     which describes what actually happened and must not start describing a
+     hypothesis. */
+  const overlayTrace = useMemo(
+    () => (projection ? projectionAsTrace(projection) : run),
+    [projection, run],
   );
+  const states = useMemo(
+    () => runStates(model, viewedKey, overlayTrace, relatedByKey),
+    [model, viewedKey, overlayTrace, relatedByKey],
+  );
+  const overlayActive = runActive || !!projection;
   const dimIds = useMemo(
-    () => (runActive ? dimNodeIds(states) : undefined),
-    [runActive, states],
+    () => (overlayActive ? dimNodeIds(states) : undefined),
+    [overlayActive, states],
   );
   const failIds = useMemo(
-    () => (runActive ? failedNodeIds(states) : undefined),
-    [runActive, states],
+    () => (overlayActive ? failedNodeIds(states) : undefined),
+    [overlayActive, states],
   );
   const runStateOf = useCallback(
     (node: MapNode) => states.get(node.id) ?? null,
@@ -600,6 +627,29 @@ export function WorkflowMapView({
     },
     [selectedTrace, selectedNode, onLoadPayload],
   );
+
+  /* Step data for the replayed run: one fetch when a run opens, held while it
+     stays open so paging operations does not re-hit the platform, and dropped
+     the moment the run is cleared. The server never caches it (`no-store`) —
+     this is a view of one open run, not a store. */
+  const runExecutionId = run?.execution?.executionId ?? null;
+  const [bundles, setBundles] = useState<ExecutionBundles | null>(null);
+  const [bundlesLoading, setBundlesLoading] = useState(false);
+  useEffect(() => {
+    if (!runExecutionId || runs?.runtime?.bundles === false) {
+      setBundles(null);
+      return;
+    }
+    let live = true;
+    setBundlesLoading(true);
+    fetchBundles(viewed.source, viewed.refId, runExecutionId)
+      .then((d) => live && setBundles(d))
+      .catch(() => live && setBundles(null))
+      .finally(() => live && setBundlesLoading(false));
+    return () => {
+      live = false;
+    };
+  }, [runExecutionId, viewed.source, viewed.refId, runs?.runtime?.bundles]);
 
   const cardFor = (node: MapNode) =>
     node.ref
@@ -765,7 +815,9 @@ export function WorkflowMapView({
     onToggle: toggleNode,
     srNoteFor: marks ? noteFor : undefined,
     isFreshGroup,
-    runActive,
+    // A projection lights the canvas through the same overlay as a recorded
+    // run, so the tree's run flag follows whichever is active.
+    runActive: overlayActive,
     runStateOf,
     runErrorOf,
     runMetaOf,
@@ -778,14 +830,14 @@ export function WorkflowMapView({
   return (
     <TooltipProvider delayDuration={250} skipDelayDuration={400}>
       <div
-        className={`flex min-h-0 min-w-0 flex-1 flex-col ${lite ? "wm-lite" : ""} ${runActive ? "wm-run" : ""}`}
+        className={`flex min-h-0 min-w-0 flex-1 flex-col ${lite ? "wm-lite" : ""} ${overlayActive ? "wm-run" : ""}`}
       >
         <div className="flex min-h-0 flex-1">
           {/* contain:paint + isolate: the canvas is its own stacking context AND
             the containing block for every descendant (fixed included), so
             nothing inside it — dots, edges, toolbar, minimap, z-indexed tree —
             can paint outside its box under any stylesheet. */}
-          <div className="relative isolate min-w-0 flex-1 overflow-hidden bg-vpbg [contain:paint]">
+          <div className={`relative isolate min-w-0 flex-1 overflow-hidden [contain:paint] ${ground === "plane" ? "bg-plane" : "bg-vpbg"}`}>
             <div className="wm-dots" aria-hidden="true" />
             {/* The viewport is focusable so arrow keys pan and +/−/0/F zoom;
               the tree inside keeps its own WAI-ARIA keyboard model. Same
@@ -889,6 +941,10 @@ export function WorkflowMapView({
                   run={selectedTrace}
                   runRelated={selectedRunRelated}
                   onLoadPayload={loadPayload}
+                  bundles={bundles}
+                  bundlesLoading={bundlesLoading}
+                  projectedFields={projection?.fields}
+                  onOverrideField={onOverrideField}
                 />
               ) : selectedGroup ? (
                 <MapEdgeSidebar
