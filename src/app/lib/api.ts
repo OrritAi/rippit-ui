@@ -1091,6 +1091,9 @@ export interface PublicInvite {
   emailMasked: string;
   expiresAt: string | null;
   status: InviteStatus;
+  source?: "org" | "platform";
+  /** Token lookup only: whether the invited address already has an account; null when unknown. */
+  accountExists?: boolean | null;
 }
 
 export interface AcceptedInvite {
@@ -1110,6 +1113,18 @@ export function acceptMyInvite(inviteId: string): Promise<AcceptedInvite> {
 /** Unauthenticated lookup — 404 unknown, 410 used / revoked / expired (code `invite_{status}`). */
 export function fetchInviteByToken(token: string): Promise<PublicInvite> {
   return apiFetch(`/invites/${encodeURIComponent(token)}`);
+}
+
+/**
+ * Creates a confirmed account for the invited address and returns that
+ * address to sign in with. 409 `account_exists` → sign in instead;
+ * 422 `weak_password`. Does not accept the invite.
+ */
+export function createInviteAccount(
+  token: string,
+  body: { password: string; displayName?: string },
+): Promise<{ email: string }> {
+  return apiPost(`/invites/${encodeURIComponent(token)}/account`, body);
 }
 
 /** Bearer; 403 `invite_email_mismatch` when the signed-in address differs. */
