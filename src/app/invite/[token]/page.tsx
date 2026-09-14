@@ -3,8 +3,15 @@
 /*
  * Where an invite email lands. Outside the (app) group on purpose: that
  * layout redirects signed-out users to /login and the token would be lost.
- * The lookup is public (organization, role, masked address); accepting needs
- * a session for the invited address.
+ *
+ * One page carries the whole path. The public lookup says who invited you to
+ * what and whether the invited address already has an account:
+ *   - no account   → name + password here; the API creates the account for
+ *                    the invited address (confirmed — the link proved the
+ *                    inbox), then this page signs in and accepts.
+ *   - an account   → Sign in (`/login?next=/invite/{token}`) and back here.
+ *   - signed in    → Accept; a different address gets Sign out, which lands
+ *                    back on this page rather than on /login.
  */
 
 import { useEffect, useState } from "react";
@@ -13,24 +20,33 @@ import { ArrowRight } from "lucide-react";
 import {
   acceptInviteByToken,
   clearApiCaches,
+  createInviteAccount,
   errorCode,
   fetchInviteByToken,
   PublicInvite,
   setActiveWorkspaceId,
 } from "@/app/lib/api";
 import { useAuth } from "@/components/app/AuthProvider";
-import { PortalHeader } from "@/components/shared/PortalHeader";
+import { LogoMark } from "@/components/shared/LogoMark";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabase";
 import { errorText } from "@/lib/feedback";
 import { until } from "@/lib/time";
 
 const GONE: Record<string, string> = {
-  invite_expired: "This invite has expired — ask for a new one.",
+  invite_expired: "This invite has expired. Ask whoever invited you to send a new one.",
   invite_revoked: "This invite was revoked.",
   invite_accepted: "This invite has already been accepted.",
   invite_not_found: "This invite link is not valid.",
 };
+
+const PASSWORD_MIN = 8;
+
+const primaryButton =
+  "h-auto w-full cursor-pointer rounded-control py-2.5 text-[13.5px] font-semibold hover:opacity-85 disabled:opacity-50";
+const inputClass = "h-9 rounded-control border-line-strong bg-hover text-[14px] placeholder:text-t3";
+const linkButton = "cursor-pointer text-t2 underline-offset-2 hover:text-t1 hover:underline";
 
 export default function InvitePage() {
   const router = useRouter();
@@ -38,9 +54,16 @@ export default function InvitePage() {
   const { session, user, loading } = useAuth();
   const [invite, setInvite] = useState<PublicInvite | null>(null);
   const [gone, setGone] = useState("");
-  const [mismatch, setMismatch] = useState("");
+  const [mismatch, setMismatch] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  // Set while create → sign in → accept runs, so the session appearing
+  // mid-way does not swap the form for the signed-in view.
+  const [joining, setJoining] = useState(false);
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [signInFirst, setSignInFirst] = useState(false);
 
   useEffect(() => {
     document.title = "Invitation — Rippit";
@@ -57,107 +80,268 @@ export default function InvitePage() {
     };
   }, [token]);
 
+  const organization = invite?.organizationName;
+  // An invitation to Rippit itself names no organization.
+  const isPlatform = !organization;
+  const next = encodeURIComponent(`/invite/${token}`);
+  const hasAccount = signInFirst || invite?.accountExists === true;
+
+  const failAccept = (e: unknown) => {
+    const code = errorCode(e);
+    if (code === "invite_email_mismatch") setMismatch(true);
+    else if (code && GONE[code]) setGone(GONE[code]);
+    else setError(errorText(e, "The invite couldn’t be accepted. Try again."));
+  };
+
+  const finish = async () => {
+    const res = await acceptInviteByToken(token);
+    setActiveWorkspaceId(res.workspaceId);
+    clearApiCaches();
+    router.replace("/dashboard");
+  };
+
   const accept = async () => {
     setBusy(true);
     setError("");
     try {
-      const res = await acceptInviteByToken(token);
-      setActiveWorkspaceId(res.workspaceId);
-      clearApiCaches();
-      router.replace("/dashboard");
+      await finish();
     } catch (e) {
-      const code = errorCode(e);
-      if (code === "invite_email_mismatch") {
-        setMismatch(`This invite was sent to ${invite?.emailMasked ?? "another address"} — sign in with that address.`);
-      } else if (code && GONE[code]) {
-        setGone(GONE[code]);
-      } else {
-        setError(errorText(e, "The invite couldn’t be accepted. Try again."));
-      }
+      failAccept(e);
       setBusy(false);
     }
   };
 
-  const signOutToSwitch = async () => {
-    await supabase.auth.signOut();
-    clearApiCaches();
-    window.location.assign(`/login?next=${encodeURIComponent(`/invite/${token}`)}`);
+  const createAndJoin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setNotice("");
+    if (password.length < PASSWORD_MIN) {
+      setError(`Use at least ${PASSWORD_MIN} characters for your password.`);
+      return;
+    }
+    setBusy(true);
+    let email: string;
+    try {
+      ({ email } = await createInviteAccount(token, { password, displayName: name.trim() || undefined }));
+    } catch (err) {
+      const code = errorCode(err);
+      if (code === "account_exists") {
+        setSignInFirst(true);
+        setNotice("You already have a Rippit account for this address. Sign in to accept.");
+      } else if (code && GONE[code]) {
+        setGone(GONE[code]);
+      } else {
+        setError(errorText(err, "Your account couldn’t be created. Try again."));
+      }
+      setBusy(false);
+      return;
+    }
+    setJoining(true);
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) throw signInError;
+    } catch {
+      // The account exists; only the automatic sign-in failed.
+      setJoining(false);
+      setBusy(false);
+      setSignInFirst(true);
+      setNotice("Your account is ready. Sign in to accept the invite.");
+      return;
+    }
+    try {
+      await finish();
+    } catch (err) {
+      setJoining(false);
+      setBusy(false);
+      failAccept(err);
+    }
   };
 
-  const next = encodeURIComponent(`/invite/${token}`);
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    clearApiCaches();
+    setMismatch(false);
+    setError("");
+    setBusy(false);
+  };
+
+  const heading = invite
+    ? isPlatform
+      ? "You’re invited to Rippit"
+      : invite.inviterName
+        ? `${invite.inviterName} invited you to`
+        : "You’re invited to"
+    : "";
 
   return (
-    <div className="flex min-h-dvh flex-col bg-bg text-t1">
-      <PortalHeader crumb="invitation" />
-      <main id="main" tabIndex={-1} className="mx-auto flex w-full max-w-[440px] flex-1 flex-col justify-center gap-4 px-6 py-16 outline-none">
-        {gone ? (
-          <p role="status" className="text-[13.5px] text-t2">
-            {gone}
-          </p>
-        ) : !invite ? (
-          <p role="status" className="font-mono text-[11px] text-t3">
-            loading…
-          </p>
-        ) : (
-          <div className="flex flex-col gap-4 rounded-card border border-line bg-panel p-5">
-            <div>
-              <p className="text-[12px] text-t3">You are invited to</p>
-              <h1 className="mt-0.5 [overflow-wrap:anywhere] text-[18px] font-bold tracking-[-0.02em]">{invite.organizationName || "an organization"}</h1>
-              <p className="mt-1.5 font-mono text-[11px] text-t3">
-                as {invite.role} · for {invite.emailMasked}
-                {invite.inviterName ? ` · from ${invite.inviterName}` : ""}
-                {invite.expiresAt ? ` · expires ${until(invite.expiresAt)}` : ""}
-              </p>
-            </div>
+    <main
+      id="main"
+      tabIndex={-1}
+      className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-vpbg p-4 outline-none"
+      style={{
+        backgroundImage: "radial-gradient(var(--dot) 1.2px, transparent 1.6px)",
+        backgroundSize: "24px 24px",
+      }}
+    >
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{ background: "radial-gradient(ellipse 70% 60% at 50% 45%, transparent 0%, var(--vpbg) 85%)" }}
+      />
 
-            {loading ? null : mismatch ? (
-              <>
-                <p role="alert" className="text-[13px] text-warn-text">
-                  {mismatch}
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={signOutToSwitch}
-                  className="h-auto w-full cursor-pointer rounded-control border-line-strong bg-transparent py-2.5 text-[13.5px] font-semibold hover:bg-hover dark:bg-transparent dark:hover:bg-hover"
-                >
-                  Sign out
-                </Button>
-              </>
-            ) : session && user ? (
-              <>
-                <p className="font-mono text-[11px] text-t3">signed in as {user.email}</p>
-                <Button
-                  type="button"
-                  disabled={busy}
-                  onClick={accept}
-                  className="h-auto w-full cursor-pointer rounded-control py-2.5 text-[13.5px] font-semibold hover:opacity-85 disabled:opacity-50"
-                >
-                  {busy ? "Joining…" : "Accept"}
-                  {!busy && <ArrowRight aria-hidden="true" className="size-3.5" />}
-                </Button>
-                {error && (
-                  <p role="alert" className="text-[12.5px] text-err-text">
-                    {error}
+      <div className="relative w-full max-w-[400px]" style={{ animation: "riseIn .55s var(--ease-out) both" }}>
+        <div className="mb-7 flex items-center justify-center gap-2.5">
+          <LogoMark size={18} />
+          <span className="text-[17px] font-extrabold tracking-[-0.02em]">rippit</span>
+        </div>
+
+        <div className="rounded-card border border-line bg-panel shadow-[var(--shadow-float)] backdrop-blur-[14px]">
+          {gone ? (
+            <div className="space-y-4 p-6 text-center">
+              <p role="status" className="text-[14px] leading-relaxed text-t2">
+                {gone}
+              </p>
+              <Button type="button" variant="outline" onClick={() => router.push("/login")} className={`${primaryButton} border-line-strong bg-transparent hover:bg-hover dark:bg-transparent dark:hover:bg-hover`}>
+                Go to Rippit
+              </Button>
+            </div>
+          ) : !invite ? (
+            <div className="space-y-3 p-6" role="status" aria-label="Loading invitation">
+              <div className="h-3 w-32 animate-pulse rounded bg-hover" />
+              <div className="h-6 w-52 animate-pulse rounded bg-hover" />
+              <div className="h-3 w-40 animate-pulse rounded bg-hover" />
+            </div>
+          ) : (
+            <>
+              <div className="border-b border-line px-6 pb-5 pt-6 text-center">
+                {!isPlatform && <p className="text-[13px] text-t3">{heading}</p>}
+                <h1 className="mt-1 [overflow-wrap:anywhere] text-[22px] font-bold leading-tight tracking-[-0.02em]">
+                  {isPlatform ? heading : organization}
+                </h1>
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 font-mono text-[11px] text-t3">
+                  {!isPlatform && (
+                    <span className="rounded-full border border-line px-2 py-0.5 capitalize">{invite.role}</span>
+                  )}
+                  <span className="rounded-full border border-line px-2 py-0.5">{invite.emailMasked}</span>
+                  {invite.expiresAt && (
+                    <span className="rounded-full border border-line px-2 py-0.5">expires {until(invite.expiresAt)}</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-4 p-6">
+                {loading ? (
+                  <div className="h-9 animate-pulse rounded-control bg-hover" />
+                ) : joining ? (
+                  <p role="status" className="flex items-center justify-center gap-2 py-2 text-[13.5px] text-t2">
+                    <span aria-hidden="true" className="spin inline-block size-3 rounded-full border-[1.5px] border-current border-t-transparent" />
+                    {isPlatform ? "Setting up your account…" : `Joining ${organization}…`}
                   </p>
+                ) : session && user ? (
+                  mismatch ? (
+                    <>
+                      <p role="alert" className="text-[13px] leading-relaxed text-warn-text">
+                        You’re signed in as <span className="font-medium">{user.email}</span>, but this invite was sent to{" "}
+                        {invite.emailMasked}.
+                      </p>
+                      <Button type="button" onClick={signOut} className={primaryButton}>
+                        Sign out and continue
+                        <ArrowRight aria-hidden="true" className="size-3.5" />
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button type="button" disabled={busy} onClick={accept} className={primaryButton}>
+                        {busy ? "Joining…" : isPlatform ? "Accept invite" : `Join ${organization}`}
+                        {!busy && <ArrowRight aria-hidden="true" className="size-3.5" />}
+                      </Button>
+                      {error && (
+                        <p role="alert" className="text-center text-[12.5px] text-err-text">
+                          {error}
+                        </p>
+                      )}
+                      <p className="text-center text-[12px] text-t3">
+                        Signed in as {user.email} ·{" "}
+                        <button type="button" onClick={signOut} className={linkButton}>
+                          Not you?
+                        </button>
+                      </p>
+                    </>
+                  )
+                ) : hasAccount ? (
+                  <>
+                    <p className="text-center text-[13.5px] leading-relaxed text-t2">
+                      {notice || `Sign in as ${invite.emailMasked} to accept.`}
+                    </p>
+                    <Button type="button" onClick={() => router.push(`/login?next=${next}`)} className={primaryButton}>
+                      Sign in to accept
+                      <ArrowRight aria-hidden="true" className="size-3.5" />
+                    </Button>
+                  </>
+                ) : (
+                  <form onSubmit={createAndJoin} className="space-y-4">
+                    <div>
+                      <p className="text-[14px] font-semibold">Create your account</p>
+                      <p className="mt-0.5 text-[12.5px] text-t3">You’ll sign in with {invite.emailMasked}.</p>
+                    </div>
+                    <div>
+                      <label htmlFor="invite-name" className="mb-1.5 block text-[12px] font-semibold text-t3">
+                        Your name
+                      </label>
+                      <Input
+                        id="invite-name"
+                        autoComplete="name"
+                        maxLength={60}
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Jane Cooper"
+                        className={inputClass}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="invite-password" className="mb-1.5 block text-[12px] font-semibold text-t3">
+                        Password
+                      </label>
+                      <Input
+                        id="invite-password"
+                        type="password"
+                        required
+                        minLength={PASSWORD_MIN}
+                        autoComplete="new-password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder={`At least ${PASSWORD_MIN} characters`}
+                        aria-invalid={error ? true : undefined}
+                        aria-describedby={error ? "invite-error" : undefined}
+                        className={inputClass}
+                      />
+                    </div>
+                    {error && (
+                      <p role="alert" id="invite-error" className="text-[12.5px] text-err-text">
+                        {error}
+                      </p>
+                    )}
+                    <Button type="submit" disabled={busy} className={primaryButton}>
+                      {busy ? "Creating account…" : isPlatform ? "Create account" : "Create account and join"}
+                      {!busy && <ArrowRight aria-hidden="true" className="size-3.5" />}
+                    </Button>
+                    <p className="text-center text-[12px] text-t3">
+                      Already have an account?{" "}
+                      <button type="button" onClick={() => router.push(`/login?next=${next}`)} className={linkButton}>
+                        Sign in
+                      </button>
+                    </p>
+                  </form>
                 )}
-              </>
-            ) : (
-              <>
-                <p className="text-[12.5px] text-t3">Sign in with that address to accept.</p>
-                <Button
-                  type="button"
-                  onClick={() => router.push(`/login?next=${next}`)}
-                  className="h-auto w-full cursor-pointer rounded-control py-2.5 text-[13.5px] font-semibold hover:opacity-85"
-                >
-                  Sign in
-                  <ArrowRight aria-hidden="true" className="size-3.5" />
-                </Button>
-              </>
-            )}
-          </div>
-        )}
-      </main>
-    </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <p className="mx-auto mt-6 max-w-[320px] text-center text-[11.5px] leading-relaxed text-t3">
+          Rippit is a read-only map of your Make and GoHighLevel automations. It never edits or triggers anything.
+        </p>
+      </div>
+    </main>
   );
 }
