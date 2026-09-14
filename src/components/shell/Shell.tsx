@@ -7,7 +7,7 @@ import { IconRail } from "./IconRail";
 import { AnimatePresence, motion } from "framer-motion";
 import { SidePanel, panelFor } from "./SidePanel";
 import { SupportBanner } from "./SupportBanner";
-import { isTypingTarget, overlayOpen, useShell } from "./shell-context";
+import { isTypingTarget, NARROW_QUERY, overlayOpen, setRailTransient, useShell } from "./shell-context";
 import { useStoredJson, writeStored } from "@/lib/stored";
 import { usePalette } from "@/components/palette/palette-context";
 
@@ -46,7 +46,7 @@ const PANEL_MAX = 560;
 const clampWidth = (w: number) => Math.min(PANEL_MAX, Math.max(PANEL_MIN, Math.round(Number.isFinite(w) ? w : PANEL_DEFAULT)));
 
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { railOpen, setRailOpen, toggleRail, fireEscape, fullBleed } = useShell();
+  const { railOpen, toggleRail, fireEscape, fullBleed } = useShell();
   const palette = usePalette();
   const pathname = usePathname();
   // Show the shortcut that actually works on this platform, not both.
@@ -55,7 +55,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
     setShortcutHint(mac ? "⌘K" : "Ctrl K");
   }, []);
-  const narrow = useMediaQuery("(max-width: 1100px)");
+  const narrow = useMediaQuery(NARROW_QUERY);
   const bleed = fullBleed === "full";
   const available = !bleed && !!panelFor(pathname).Component;
   const show = railOpen && available;
@@ -111,11 +111,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
     [panelWidth]
   );
 
-  // Overlay browser closes when you navigate.
+  // The overlay browser closes when you navigate — but only as an overlay.
+  // `setRailTransient` leaves the stored preference alone, so widening the
+  // window (or the next visit) still shows the column the user chose.
   useEffect(() => {
-    if (narrow && railOpen) setRailOpen(false);
+    if (narrow) setRailTransient(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
+
+  // Wide enough for a column again: the dismissal was about the overlay.
+  useEffect(() => {
+    if (!narrow) setRailTransient(null);
+  }, [narrow]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -177,7 +184,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
         )}
         {show && narrow && (
           <motion.div key="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} className="fixed inset-0 z-20">
-            <button type="button" aria-label="Close side panel" onClick={() => setRailOpen(false)} className="absolute inset-0 bg-[color-mix(in_srgb,var(--bg)_55%,transparent)]" />
+            {/* Dismissing the overlay is not a layout choice either: transient,
+                so the column is still there on a wide screen. */}
+            <button type="button" aria-label="Close side panel" onClick={() => setRailTransient(false)} className="absolute inset-0 bg-[color-mix(in_srgb,var(--bg)_55%,transparent)]" />
             <motion.div initial={{ x: -24 }} animate={{ x: 0 }} exit={{ x: -24 }} transition={{ duration: 0.24, ease: EASE }} className="absolute inset-y-0 left-[52px] z-30 shadow-[var(--shadow-float)]" style={{ width: panelWidth }}>
               <SidePanel />
             </motion.div>

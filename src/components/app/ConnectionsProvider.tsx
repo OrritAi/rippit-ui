@@ -51,6 +51,9 @@ interface ConnectionsCtx {
   linkMap: LinkMap | null;
   /** Connection ids currently syncing. */
   syncing: Set<string>;
+  /** Connection ids whose delete is still in flight. They are already gone
+   *  from `connections`; this is only for a caller that wants to say so. */
+  removing: Set<string>;
   /** Whether a sync may start for this connection — false while anything on
    *  the same credential is running. */
   canSync: (conn: Connection) => boolean;
@@ -71,6 +74,7 @@ const Ctx = createContext<ConnectionsCtx>({
   treeStatus: {},
   linkMap: null,
   syncing: EMPTY_SYNCING as Set<string>,
+  removing: EMPTY_SYNCING as Set<string>,
   canSync: () => true,
   refresh: () => {},
   sync: async () => {},
@@ -132,7 +136,15 @@ export function ConnectionsProvider({
   const [treeStatus, setTreeStatus] = useState<Record<string, TreeStatus>>({});
   const [linkMap, setLinkMap] = useState<LinkMap | null>(null);
   const [syncing, setSyncing] = useState<Set<string>>(new Set());
+  const [removing, setRemoving] = useState<Set<string>>(new Set());
   const [generation, setGeneration] = useState(0);
+
+  // Nothing has landed yet. Only the *first* pass may put the app in a
+  // loading state: `refresh()` re-reads every connection and every tree, and
+  // flipping `loading` for that blanks the shell's workflow browser, its
+  // count, and half a dozen pages — for a reload whose result is usually
+  // identical to what is already on screen. Subsequent passes fill in place.
+  const cold = useRef(true);
 
   const refresh = useCallback(() => setGeneration((g) => g + 1), []);
 
@@ -151,7 +163,7 @@ export function ConnectionsProvider({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    if (cold.current) setLoading(true);
     setError("");
     fetchConnections()
       .then((conns) => {
@@ -160,7 +172,11 @@ export function ConnectionsProvider({
         conns.forEach(loadTree);
       })
       .catch((err) => !cancelled && setError(err.message))
-      .finally(() => !cancelled && setLoading(false));
+      .finally(() => {
+        if (cancelled) return;
+        cold.current = false;
+        setLoading(false);
+      });
 
     fetchLinks()
       .then((m) => !cancelled && setLinkMap(m))
@@ -227,10 +243,58 @@ export function ConnectionsProvider({
     []
   );
 
+  // Disconnect is optimistic and never awaited by the UI.
+  //
+  // The request is slow by nature — the API purges everything the connection
+  // produced before it drops the row, and a large estate cascades a lot of
+  // rows — and the old shape awaited it, then called `refresh()`, which put
+  // the whole app back into `loading` and refetched every other connection's
+  // tree. Removing one connection made the rest of the product unusable for
+  // as long as it took.
+  //
+  // So the row leaves immediately (a delete has one plausible outcome) and
+  // the request runs behind a toast. On failure it comes back, which is the
+  // only state worth restoring: nothing else in the app depends on it.
   const disconnect = useCallback(
     async (conn: Connection) => {
-      await deleteConnection(conn);
-      refresh();
+      const label =
+        conn.displayName || conn.label || getConnector(conn.provider).shortLabel;
+
+      setRemoving((prev) => new Set(prev).add(conn.id));
+      setConnections((prev) => prev.filter((c) => c.id !== conn.id));
+      const drop = <T,>(map: Record<string, T>) =>
+        Object.fromEntries(Object.entries(map).filter(([id]) => id !== conn.id));
+      setTrees(drop);
+      setTreeStatus(drop);
+
+      const work = deleteConnection(conn).finally(() =>
+        setRemoving((prev) => {
+          const next = new Set(prev);
+          next.delete(conn.id);
+          return next;
+        })
+      );
+
+      toast.promise(work, {
+        loading: `Disconnecting ${label}…`,
+        success: `Disconnected ${label} — its workflows and their history were deleted`,
+        error: `${label} could not be disconnected`,
+      });
+
+      try {
+        await work;
+      } catch {
+        // Put it back. `refresh()` rather than re-inserting the stale object:
+        // the server is the only thing that knows whether the delete got far
+        // enough to matter.
+        refresh();
+        return;
+      }
+      // Cross-platform edges referenced this connection's workflows. Cheap,
+      // and the only shared state a disconnect actually invalidates.
+      fetchLinks()
+        .then(setLinkMap)
+        .catch(() => setLinkMap(null));
     },
     [refresh]
   );
@@ -253,6 +317,7 @@ export function ConnectionsProvider({
       treeStatus,
       linkMap,
       syncing,
+      removing,
       canSync,
       refresh,
       sync,
@@ -267,6 +332,7 @@ export function ConnectionsProvider({
       treeStatus,
       linkMap,
       syncing,
+      removing,
       canSync,
       refresh,
       sync,
