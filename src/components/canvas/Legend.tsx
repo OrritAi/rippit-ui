@@ -68,6 +68,29 @@ const ITEMS: Item[] = [
     swatch: <span className="rounded-full px-1.5 py-[1px] text-[10px] font-semibold" style={{ background: "color-mix(in srgb, var(--warn) 18%, transparent)", color: "var(--warn-text)" }}>↗</span>,
     label: "Portal to connected workflow",
   },
+  // Step data's provenance register. The Legend is the single vocabulary, so
+  // every mark that carries meaning gets a row — these four are how a panel
+  // answers "did this happen, or did Rippit work it out".
+  {
+    swatch: <span className="h-4 w-0" style={{ borderLeft: "2px solid var(--t2)" }} />,
+    label: "Observed",
+    hint: "The platform recorded this value in the run",
+  },
+  {
+    swatch: <span className="h-4 w-0" style={{ borderLeft: "2px solid var(--map-accent)" }} />,
+    label: "You set it",
+    hint: "Your typed input or override, held for this view and never stored",
+  },
+  {
+    swatch: <span className="h-4 w-0" style={{ borderLeft: "2px dashed var(--t3)" }} />,
+    label: "Computed",
+    hint: "Rippit worked it out from the steps above — not what the platform reported",
+  },
+  {
+    swatch: <span className="h-4 w-0" style={{ borderLeft: "2px dotted var(--t3)" }} />,
+    label: "Needs a step",
+    hint: "Depends on a step's output Rippit cannot compute; supply it to continue",
+  },
 ];
 
 export function Legend({ className = "" }: { className?: string }) {

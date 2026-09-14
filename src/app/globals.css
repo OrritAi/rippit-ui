@@ -330,6 +330,13 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.2; }
 }
+/* Idle bob for the monitor's node pucks. Transform-only, so it composites
+   and never reflows; the reduced-motion block below stops it on the first
+   keyframe like the rest of the ambience. */
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
 @keyframes dashdrift {
   to { stroke-dashoffset: -40; }
 }

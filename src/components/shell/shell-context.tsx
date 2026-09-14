@@ -5,8 +5,10 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
 } from "react";
 
@@ -16,6 +18,9 @@ import {
  *  - escape layers: the topmost registered handler wins on Esc, so a page
  *    can close its dock without fighting dialogs/palette (which register
  *    above it while open)
+ *  - full bleed: the one channel a page has for asking the shell to step
+ *    out of its way (`useFullBleed`), so no part of the shell has to
+ *    recognise a page by its pathname
  */
 
 const RAIL_KEY = "rippit.railOpen";
@@ -49,6 +54,17 @@ function subscribe(l: () => void) {
 
 type EscapeHandler = () => boolean | void;
 
+/**
+ * How much of the shell a page is asking to have out of its way:
+ *  - `header`: the page carries its own header instead of the search bar
+ *    (Settings' portal header).
+ *  - `full`: the page takes the whole frame — icon rail, browser column and
+ *    header all step out (the workflow history surface).
+ * `full` wins whenever both are claimed, so the answer never depends on
+ * which page mounted first.
+ */
+export type FullBleed = "header" | "full";
+
 interface ShellCtx {
   railOpen: boolean;
   setRailOpen: (v: boolean) => void;
@@ -57,6 +73,11 @@ interface ShellCtx {
   pushEscape: (h: EscapeHandler) => () => void;
   /** Fire the topmost Esc handler; true when one consumed it. */
   fireEscape: () => boolean;
+  /** What the mounted pages are asking the shell to drop, or null. */
+  fullBleed: FullBleed | null;
+  /** Claim (or, with null, release) a full-bleed level under `key`.
+   *  Use `useFullBleed` rather than calling this directly. */
+  setFullBleed: (key: string, mode: FullBleed | null) => void;
 }
 
 const Ctx = createContext<ShellCtx>({
@@ -65,6 +86,8 @@ const Ctx = createContext<ShellCtx>({
   toggleRail: () => {},
   pushEscape: () => () => {},
   fireEscape: () => false,
+  fullBleed: null,
+  setFullBleed: () => {},
 });
 
 export function useShell() {
@@ -84,9 +107,22 @@ export function useEscape(active: boolean, handler: EscapeHandler) {
   }, [active, pushEscape]);
 }
 
+/** Ask the shell to step out of the way for as long as this component is
+ *  mounted with a non-null `mode`. The claim is released on unmount, so a
+ *  page never has to undo it — and the shell never has to know the page. */
+export function useFullBleed(mode: FullBleed | null) {
+  const { setFullBleed } = useShell();
+  const key = useId();
+  useEffect(() => {
+    setFullBleed(key, mode);
+    return () => setFullBleed(key, null);
+  }, [key, mode, setFullBleed]);
+}
+
 export function ShellProvider({ children }: { children: React.ReactNode }) {
   const railOpen = useSyncExternalStore(subscribe, readRail, () => false);
   const stack = useRef<EscapeHandler[]>([]);
+  const [claims, setClaims] = useState<Readonly<Record<string, FullBleed>>>({});
 
   const setRailOpen = useCallback((v: boolean) => writeRail(v), []);
   const toggleRail = useCallback(() => writeRail(!readRail()), []);
@@ -102,9 +138,26 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
     return top() !== false;
   }, []);
 
+  const setFullBleed = useCallback((key: string, mode: FullBleed | null) => {
+    setClaims((cur) => {
+      if (mode === null) {
+        if (!(key in cur)) return cur;
+        const next = { ...cur };
+        delete next[key];
+        return next;
+      }
+      if (cur[key] === mode) return cur;
+      return { ...cur, [key]: mode };
+    });
+  }, []);
+  const fullBleed: FullBleed | null = useMemo(() => {
+    const claimed = Object.values(claims);
+    return claimed.includes("full") ? "full" : claimed.length > 0 ? "header" : null;
+  }, [claims]);
+
   const value = useMemo(
-    () => ({ railOpen, setRailOpen, toggleRail, pushEscape, fireEscape }),
-    [railOpen, setRailOpen, toggleRail, pushEscape, fireEscape]
+    () => ({ railOpen, setRailOpen, toggleRail, pushEscape, fireEscape, fullBleed, setFullBleed }),
+    [railOpen, setRailOpen, toggleRail, pushEscape, fireEscape, fullBleed, setFullBleed]
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

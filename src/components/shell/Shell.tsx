@@ -16,6 +16,12 @@ import { usePalette } from "@/components/palette/palette-context";
  * → the view. Under 1100px the browser floats over the view instead of taking
  * width, and closes on navigation.
  *
+ * A page can ask for room through one channel — `useFullBleed` on the shell
+ * context. `header` drops the search bar because the page carries its own
+ * (Settings); `full` drops the rail and the browser column too, and with them
+ * the `[` shortcut, because the page is the whole screen (the workflow
+ * history surface). No part of the shell recognises a page by its pathname.
+ *
  * Global keys live here (one listener): ⌘K toggles the action hub, Esc walks
  * the escape layers (palette → overlays → page dock), `[` toggles the browser.
  */
@@ -40,7 +46,7 @@ const PANEL_MAX = 560;
 const clampWidth = (w: number) => Math.min(PANEL_MAX, Math.max(PANEL_MIN, Math.round(Number.isFinite(w) ? w : PANEL_DEFAULT)));
 
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { railOpen, setRailOpen, toggleRail, fireEscape } = useShell();
+  const { railOpen, setRailOpen, toggleRail, fireEscape, fullBleed } = useShell();
   const palette = usePalette();
   const pathname = usePathname();
   // Show the shortcut that actually works on this platform, not both.
@@ -50,8 +56,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
     setShortcutHint(mac ? "⌘K" : "Ctrl K");
   }, []);
   const narrow = useMediaQuery("(max-width: 1100px)");
-  const settings = pathname.startsWith("/settings");
-  const available = !!panelFor(pathname).Component;
+  const bleed = fullBleed === "full";
+  const available = !bleed && !!panelFor(pathname).Component;
   const show = railOpen && available;
 
   /* ---- resizable browser column ---- */
@@ -137,7 +143,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-svh overflow-hidden bg-bg text-t1">
-      <IconRail />
+      {!bleed && <IconRail />}
       <AnimatePresence initial={false}>
         {show && !narrow && (
           <motion.div
@@ -180,8 +186,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </AnimatePresence>
       <main id="main" tabIndex={-1} className="relative flex min-w-0 flex-1 flex-col overflow-hidden outline-none">
         <SupportBanner />
-        {/* Settings carries its own 52px portal header instead of the search bar. */}
-        {!settings && (
+        {/* Dropped by any page carrying its own header — Settings' portal
+            header, the history surface's. */}
+        {!fullBleed && (
           <header role="search" className="flex flex-none items-center border-b border-line bg-panel px-4 py-2">
             <button type="button" onClick={palette.open} aria-label="Search workflows, steps and assets" aria-haspopup="dialog" className="flex w-full max-w-2xl items-center gap-2 rounded-control border border-line bg-bg px-3 py-2 text-left text-[13px] text-t2 hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ringc)]">
               <Search aria-hidden="true" className="size-4 flex-none" />

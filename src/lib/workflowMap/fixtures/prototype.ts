@@ -1,4 +1,4 @@
-import type { ExecutionPayload, ExecutionTrace, LinkMap, ModuleInfo, ScenarioSummary, WorkflowCard, WorkflowLink } from "@/app/lib/api";
+import type { ExecutionPayload, ExecutionTrace, LinkMap, ModuleInfo, Projection, ScenarioSummary, WorkflowCard, WorkflowLink } from "@/app/lib/api";
 import type { SummaryEntry, WorkflowKey, WorkflowRef } from "../types";
 
 /*
@@ -281,10 +281,50 @@ export const PROTOTYPE_TRACE: ExecutionTrace = {
     execution: "https://eu1.make.com/912/scenarios/912/logs/e12",
     editor: "https://eu1.make.com/912/scenarios/912/edit",
   },
-  notes: ["Make reports per-module status and bundle counts only — inputs and outputs of individual modules are not exposed by its API."],
+  notes: ["Make reports each module's status and bundle count here; a step's own input and output are read separately, on demand, and never stored."],
   refreshing: false,
   rateLimited: true,
   retryAfter: 42,
+};
+
+/* ── PROTOTYPE_PROJECTION — a typed input over the same workflow ──────
+   The same seven steps, but nothing ran: `status` is null everywhere, node 4
+   is `untouched` because its gate evaluated false rather than because it
+   failed, and node 5 is `unknown` because nothing supplies the step it reads.
+   Its job in `check:map` is to prove the overlay renders a projection through
+   the recorded-run code path without ever producing a failure. */
+export const PROTOTYPE_PROJECTION: Projection = {
+  supported: true,
+  nodes: [
+    { nodeId: "1", state: "touched", gate: null },
+    { nodeId: "2", state: "touched", gate: null },
+    { nodeId: "7", state: "touched", gate: null },
+    { nodeId: "3", state: "touched", gate: null },
+    {
+      nodeId: "4",
+      state: "untouched",
+      gate: {
+        evaluated: false,
+        label: "Only big deals",
+        reason: null,
+        operands: [{ operator: "number:gte", left: 400, right: "1000", verdict: false }],
+      },
+    },
+    { nodeId: "5", state: "unknown", gate: { evaluated: null, label: null, reason: "depends on the output of step 4, which Rippit cannot compute", operands: [], blockedBy: "4" } },
+    { nodeId: "6", state: "untouched", gate: null },
+  ],
+  fields: {},
+  frames: {},
+  partial: true,
+  notes: ["Projected by Rippit — no run happened."],
+  projection: {
+    source: "typed",
+    inputHash: null,
+    overrides: [],
+    runBlueprintAt: null,
+    unresolvedCount: 1,
+    visitCap: 3,
+  },
 };
 
 /* ── PROTOTYPE_RELATED_TRACE — the related run of make:913 (e9) ───────

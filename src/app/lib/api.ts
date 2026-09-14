@@ -189,8 +189,12 @@ export interface Execution {
  *  the entry node only (webhook request / failing bundle) or nowhere. */
 export interface RuntimeCapabilities {
   trace: boolean;
+  /** The trigger request / DLQ bundle of a single node. */
   payload: "entry-only" | "none";
   identifiers: boolean;
+  /** Every module's real input and output for one run — a separate capability
+   *  from `payload`, and a provider may have one without the other. */
+  bundles?: boolean;
   simulate?: boolean;
 }
 
@@ -201,6 +205,9 @@ export interface ExecutionsResponse {
   fetchedAt: string | null;
   refreshing?: boolean;
   runtime?: RuntimeCapabilities;
+  /** The page filled: retention holds more runs than this response carries.
+   *  Depth belongs to `GET /runs`, which is keyset-paged for it. */
+  hasMore?: boolean;
 }
 
 export function fetchExecutions(
@@ -307,6 +314,148 @@ export interface ExecutionPayload {
   retryAfter?: number | null;
 }
 
+/** Where a value came from — the four classes of truth. Colour is spoken for
+ *  (status and app identity), so the register rides on the stroke style of a
+ *  left rule plus a mono tag; see `components/projection/Provenance.tsx`.
+ *  `resolved`/`constant` are Rippit's own arithmetic, `opaque` has known
+ *  provenance but no computed value, `unresolved` names the step it needs. */
+export type FieldProvenance =
+  | "observed"
+  | "supplied"
+  | "resolved"
+  | "constant"
+  | "opaque"
+  | "unresolved";
+
+/** One run of one module. A module can legitimately run many times (iterators,
+ *  fan-out), so the panel offers an operation picker rather than the first. */
+export interface BundleOperation {
+  cycle: number | null;
+  operation: number | null;
+  input: unknown;
+  output: unknown;
+  error: boolean;
+  /** Make's own flag, kept distinct from Rippit's cap (`cappedBy`). */
+  truncated: boolean;
+  /** Set when Rippit dropped the value to stay inside its own ceiling. */
+  cappedBy?: "rippit";
+  /** The value would not parse as JSON and is shown as the platform sent it. */
+  unparsed?: boolean;
+}
+
+export interface BundleFrame {
+  operations: BundleOperation[];
+  /** False for a module the run had but the current blueprint no longer does. */
+  inBlueprint: boolean;
+}
+
+/** What every step of one run received and returned — fetched through at
+ *  drill-in, never stored. `available: false` always carries a reason: past
+ *  retention, nothing recorded, or a platform that exposes none. */
+export interface ExecutionBundles {
+  supported: boolean;
+  available: boolean;
+  frames: Record<string, BundleFrame>;
+  events: { nodeId: string; kind: string; at: string | null }[];
+  runBlueprint?: { id: number; name: string }[] | null;
+  bytes?: number;
+  truncated?: boolean;
+  cappedNodes?: string[];
+  note?: string | null;
+  reason?: string | null;
+  rateLimited?: boolean;
+  retryAfter?: number | null;
+}
+
+/** One field of the derived input contract. `inGate` is what makes a field
+ *  interesting — only a gated field can change the path — so the form sorts
+ *  those first and shows the thresholds found in the blueprint. */
+export interface ContractField {
+  path: string;
+  usedBy: string[];
+  inGate: boolean;
+  required: boolean;
+  inferredType: "string" | "number" | "email" | "phone" | "date" | "boolean" | "list";
+  operators: string[];
+  comparedTo: string[];
+  /** Proved to exist by a real trigger payload rather than inferred. */
+  observed: boolean;
+}
+
+export interface InputContract {
+  supported: boolean;
+  reason?: string;
+  fields: ContractField[];
+  /** GHL reads a contact record, not a request body. */
+  shape?: "contact";
+}
+
+export interface ProjectedField {
+  key: string;
+  state: FieldProvenance;
+  value?: unknown;
+  blockedBy?: string;
+  usedBy?: string[];
+}
+
+/** How one node's projected path compares to the run that actually happened.
+ *  `now-unevaluable` is deliberately not a divergence: a gate Rippit cannot
+ *  evaluate is a gap, and reporting it as a change would cry wolf on every
+ *  workflow containing an external call. */
+export type DiffOutcome =
+  | "same"
+  | "newly-reached"
+  | "no-longer-reached"
+  | "now-unevaluable"
+  | "new"
+  | "gone";
+
+/** The sentence at the top of a diff, grouped by cause rather than by step. */
+export interface ProjectionVerdict {
+  headline: string;
+  detail: string | null;
+  changed: string[];
+  unevaluable: number;
+}
+
+export interface ProjectedGate {
+  evaluated: boolean | null;
+  label: string | null;
+  reason: string | null;
+  operands: { operator: string; left: unknown; right: unknown; verdict: boolean | null; field?: string }[];
+  blockedBy?: string;
+}
+
+/** A projection is structurally an ExecutionTrace, so the run overlay renders
+ *  it unchanged; `projection` is the only signal the UI needs to switch
+ *  register. Nothing here is stored — a reload discards it. */
+export interface Projection {
+  supported: boolean;
+  reason?: string;
+  nodes: {
+    nodeId: string;
+    state: "touched" | "untouched" | "unknown" | null;
+    gate: ProjectedGate | null;
+    /** Present only for a projection against a recorded run. */
+    outcome?: DiffOutcome;
+  }[];
+  /** Present only for a diff; null for a plain projection. */
+  verdict?: ProjectionVerdict | null;
+  fields: Record<string, ProjectedField[]>;
+  frames: Record<string, { source: "observed" | "supplied" | "computed"; operations: BundleOperation[] }>;
+  partial: boolean;
+  notes: string[];
+  projection: {
+    source: "recorded" | "typed";
+    /** Always null: a projection is not a run and never joins a record timeline. */
+    inputHash: null;
+    overrides: string[];
+    runBlueprintAt: string | null;
+    unresolvedCount: number;
+    visitCap: number;
+  };
+}
+
 export type RecordKind = "email" | "phone" | "contact_id" | "id";
 
 export interface RecordRun {
@@ -362,6 +511,40 @@ export function fetchExecutionPayload(
   const qs = node != null ? `?node=${encodeURIComponent(node)}` : "";
   return apiFetch<ExecutionPayload>(
     `/workflows/${provider}/${encodeURIComponent(externalId)}/executions/${encodeURIComponent(executionId)}/payload${qs}`
+  );
+}
+
+/** Every step's real input and output for one run. One call per run — it also
+ *  carries the per-module events trace. Never cached: a second look re-fetches,
+ *  which is what "fetched through, never stored" means in practice. */
+export function fetchBundles(
+  provider: ProviderId,
+  externalId: string,
+  executionId: string
+): Promise<ExecutionBundles> {
+  return apiFetch<ExecutionBundles>(
+    `/workflows/${provider}/${encodeURIComponent(externalId)}/executions/${encodeURIComponent(executionId)}/bundles`
+  );
+}
+
+/** What this workflow expects as input, derived from its own blueprint. */
+export function fetchInputContract(provider: ProviderId, externalId: string): Promise<InputContract> {
+  return apiFetch<InputContract>(
+    `/workflows/${provider}/${encodeURIComponent(externalId)}/input-contract`
+  );
+}
+
+/** Where an input would go. A POST because the input is a body — nothing is
+ *  written, and nothing is sent to the platform unless `runId` asks for a
+ *  recorded run's real values as the starting point. */
+export function projectWorkflow(
+  provider: ProviderId,
+  externalId: string,
+  body: { runId?: string; input?: Record<string, unknown>; overrides?: Record<string, unknown> }
+): Promise<Projection> {
+  return apiPost<Projection>(
+    `/workflows/${provider}/${encodeURIComponent(externalId)}/project`,
+    body
   );
 }
 
@@ -429,10 +612,14 @@ export interface RunsQuery {
   provider?: ProviderId | null;
   workflow?: string | null;
   q?: string | null;
-  window?: RunWindow;
+  /** `all` drops the lower bound — one workflow's whole retained log. */
+  window?: RunWindow | "all";
   limit?: number;
   cursor?: string | null;
 }
+
+/** The most rows `/runs` will answer in one page. */
+export const RUNS_MAX_LIMIT = 200;
 
 /** The identifier (`q`) only ever travels as a query parameter, never a path. */
 export function fetchRuns(query: RunsQuery = {}): Promise<RunsPage> {
