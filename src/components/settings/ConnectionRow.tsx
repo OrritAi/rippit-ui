@@ -1,13 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { toast } from "sonner";
 import type { Connection } from "@/app/lib/connections-store";
 import { InlineConfirm } from "@/components/shared/InlineConfirm";
 import { StatusPill } from "@/components/shared/StatusPill";
 import { Button } from "@/components/ui/button";
 import { getConnector } from "@/lib/connectors";
-import { toastError } from "@/lib/feedback";
 import { ago } from "@/lib/time";
 
 export type Health = "ok" | "warn" | "err";
@@ -93,17 +91,14 @@ export function ConnectionRow({
             question="deletes its workflows and history"
             confirmLabel="Disconnect"
             busy={removing}
-            onConfirm={async () => {
+            // Not awaited: the provider removes the row optimistically and
+            // reports the request through a toast, so the confirm strip has
+            // nothing left to wait for. Awaiting here is what used to hold
+            // the whole settings page open on a slow delete.
+            onConfirm={() => {
               setRemoving(true);
-              try {
-                await onDisconnect();
-                toast.success("Disconnected — its workflows and their history were deleted");
-              } catch (err) {
-                toastError(err, "The connection couldn’t be removed. Try again.");
-              } finally {
-                setRemoving(false);
-                setConfirming(false);
-              }
+              void onDisconnect();
+              setConfirming(false);
             }}
             onCancel={() => setConfirming(false)}
           />

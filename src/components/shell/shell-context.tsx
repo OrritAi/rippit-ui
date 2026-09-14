@@ -24,25 +24,56 @@ import {
  */
 
 const RAIL_KEY = "rippit.railOpen";
+
+/** Below this the browser column is an overlay, not a column. Shared with
+ *  `Shell`, which does the layout, so one number decides both. */
+export const NARROW_QUERY = "(max-width: 1100px)";
+
 const listeners = new Set<() => void>();
 let railCache: boolean | null = null;
+/* A viewport-driven close is not a preference. Navigating on a narrow screen
+ * dismisses the overlay, and that used to be written straight to storage — so
+ * one navigation on a laptop under 1100px erased the choice, and the browser
+ * came back collapsed on every screen and every visit. The dismissal lives
+ * here instead: it overrides the stored value until the user says otherwise
+ * or the window is wide enough for a column again. */
+let transient: boolean | null = null;
+
+function stored(): boolean {
+  try {
+    const raw = localStorage.getItem(RAIL_KEY);
+    // Nothing stored is a first visit, not a preference for collapsed. The
+    // browser column *is* the navigation, so it opens — unless the window is
+    // too narrow to hold one, where it would land as an overlay over the page.
+    if (raw === null) return !window.matchMedia(NARROW_QUERY).matches;
+    return raw === "1";
+  } catch {
+    return false;
+  }
+}
 
 function readRail(): boolean {
-  if (railCache !== null) return railCache;
-  try {
-    railCache = localStorage.getItem(RAIL_KEY) === "1";
-  } catch {
-    railCache = false;
-  }
+  if (transient !== null) return transient;
+  if (railCache === null) railCache = stored();
   return railCache;
 }
+
 function writeRail(v: boolean) {
+  transient = null;
   railCache = v;
   try {
     localStorage.setItem(RAIL_KEY, v ? "1" : "0");
   } catch {
     /* ignore */
   }
+  listeners.forEach((l) => l());
+}
+
+/** Change the live value without recording it as a choice. `null` drops the
+ *  override and the stored preference applies again. */
+export function setRailTransient(v: boolean | null) {
+  if (transient === v) return;
+  transient = v;
   listeners.forEach((l) => l());
 }
 function subscribe(l: () => void) {
