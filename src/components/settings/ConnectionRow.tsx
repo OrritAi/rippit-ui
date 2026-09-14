@@ -86,15 +86,18 @@ export function ConnectionRow({
       </div>
       {manage &&
         (confirming ? (
+          /* Not "stops syncing": the disconnect deletes the whole estate —
+             workflows, run history, health, tags, notes and comments — so a
+             reconnect starts from scratch. Say the destructive part. */
           <InlineConfirm
-            question="workflows stop syncing"
+            question="deletes its workflows and history"
             confirmLabel="Disconnect"
             busy={removing}
             onConfirm={async () => {
               setRemoving(true);
               try {
                 await onDisconnect();
-                toast.success("Disconnected — workflows from this connection are hidden");
+                toast.success("Disconnected — its workflows and their history were deleted");
               } catch (err) {
                 toastError(err, "The connection couldn’t be removed. Try again.");
               } finally {
