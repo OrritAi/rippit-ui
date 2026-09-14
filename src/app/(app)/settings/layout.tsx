@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ArrowUpRight, Shield } from "lucide-react";
 import { useRole, useWorkspace } from "@/components/app/WorkspaceProvider";
 import { useConnections } from "@/components/app/ConnectionsProvider";
 import { usePalette } from "@/components/palette/palette-context";
@@ -10,6 +11,7 @@ import { PortalHeader } from "@/components/shared/PortalHeader";
 import { SettingsProvider, useSettings } from "@/components/settings/SettingsProvider";
 import { useFullBleed } from "@/components/shell/shell-context";
 import { useHydrated } from "@/lib/stored";
+import { usePlatformAdmin } from "@/hooks/usePlatformAdmin";
 
 /*
  * Settings: a 52px portal header, a 200px section rail and a 760px content
@@ -39,6 +41,7 @@ function SettingsFrame({ children }: { children: React.ReactNode }) {
   const { members } = useSettings();
   const { connections } = useConnections();
   const palette = usePalette();
+  const isPlatformAdmin = usePlatformAdmin();
   useFullBleed("header");
   // Show the shortcut that actually works on this platform (after hydration).
   const hydrated = useHydrated();
@@ -88,6 +91,23 @@ function SettingsFrame({ children }: { children: React.ReactNode }) {
             );
           })}
           <div className="flex-1" />
+          {/* Staff only, and only once the server has said so — the allowlist
+              is `PLATFORM_ADMIN_EMAILS` on the API, checked against the JWT's
+              email on every request. This link is a shortcut, never a grant:
+              `/admin` re-checks and 404s for anyone else, so hiding it costs
+              nothing and showing it to a non-admin would only offer a dead
+              end. It sits apart from the section rail because the portal is
+              not part of this organization's settings — it is the fleet. */}
+          {isPlatformAdmin && (
+            <Link
+              href="/admin"
+              className="mb-2 flex items-center gap-2 rounded-control border border-line-strong px-2.5 py-[7px] text-[12.5px] font-semibold text-t2 transition-colors duration-[var(--dur-fast)] hover:bg-hover hover:text-t1"
+            >
+              <Shield aria-hidden="true" className="size-3.5 flex-none" />
+              Admin portal
+              <ArrowUpRight aria-hidden="true" className="ml-auto size-3 flex-none text-t3" />
+            </Link>
+          )}
           <p className="px-2.5 font-mono text-[10.5px] text-t3">you are {role}</p>
         </nav>
         <main className="min-w-0 flex-1 overflow-y-auto">
