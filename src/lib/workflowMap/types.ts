@@ -91,8 +91,8 @@ export interface MapNode {
   /** Pills: this is the workflow being viewed (every copy of it). */
   isViewed?: boolean;
   /** Pills of a workflow other than the viewed one: where to open it in
-   *  Rippit — `/w/<source>/<refId>`. Steps and routes never carry it. */
-  rippitHref?: string;
+   *  Orrit — `/w/<source>/<refId>`. Steps and routes never carry it. */
+  orritHref?: string;
   pill?: PillState;
   /** Name or description matches the current filter query. */
   hit: boolean;

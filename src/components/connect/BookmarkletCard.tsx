@@ -91,7 +91,7 @@ export default function BookmarkletCard({ href }: { href: string }) {
           className="inline-flex cursor-grab items-center gap-2 rounded-control bg-[var(--text)] px-4 py-2.5 text-[14px] font-semibold text-[var(--bg)] no-underline shadow-[var(--shadow-card)] active:cursor-grabbing"
         >
           <Bookmark aria-hidden="true" className="size-4" />
-          Connect to Rippit
+          Connect to Orrit
         </a>
 
         <button
@@ -132,8 +132,8 @@ export default function BookmarkletCard({ href }: { href: string }) {
         <kbd className="rounded border border-line px-1 tabular">⌘⇧B</kbd> on Mac,{" "}
         <kbd className="rounded border border-line px-1 tabular">Ctrl+Shift+B</kbd>{" "}
         on Windows. The bookmark reads your GoHighLevel session and hands it to{" "}
-        <span className="tabular">{origin || "Rippit"}</span> — it carries no
-        Rippit credential and sends nothing anywhere else.
+        <span className="tabular">{origin || "Orrit"}</span> — it carries no
+        Orrit credential and sends nothing anywhere else.
       </p>
     </div>
   );

@@ -39,12 +39,12 @@ export function useBadges(): Badges {
     const t = setInterval(load, POLL_MS);
     const onFocus = () => document.visibilityState === "visible" && load();
     document.addEventListener("visibilitychange", onFocus);
-    window.addEventListener("rippit:notifications", load);
+    window.addEventListener("orrit:notifications", load);
     return () => {
       live = false;
       clearInterval(t);
       document.removeEventListener("visibilitychange", onFocus);
-      window.removeEventListener("rippit:notifications", load);
+      window.removeEventListener("orrit:notifications", load);
     };
   }, [connections.length]);
 

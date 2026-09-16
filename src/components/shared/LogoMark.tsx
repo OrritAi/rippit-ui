@@ -1,4 +1,4 @@
-/** The rippit mark: a 45°-rotated rounded square with a centred dot. */
+/** The orrit mark: a 45°-rotated rounded square with a centred dot. */
 export function LogoMark({ size, className = "", style }: { size: number; className?: string; style?: React.CSSProperties }) {
   const radius = Math.max(4, Math.round(size * 0.27));
   const dot = Math.max(4, Math.round(size * 0.27));

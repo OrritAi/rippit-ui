@@ -81,7 +81,7 @@ export function WorkflowMapPreview({ big: isBig, tall: tallN = 0, snapshot = nul
     [fixture]
   );
   useEffect(() => {
-    document.title = "Workflow Map preview — Rippit";
+    document.title = "Workflow Map preview — Orrit";
   }, []);
   return (
     <div className="flex h-full min-w-0 flex-col">

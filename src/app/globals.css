@@ -6,7 +6,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
-  Rippit design system — monochrome zinc chrome, color reserved for
+  Orrit design system — monochrome zinc chrome, color reserved for
   status + app identity. Light is the default theme; dark is applied
   via the `.dark` class on <html>.
 */

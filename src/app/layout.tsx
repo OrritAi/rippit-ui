@@ -6,8 +6,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Rippit",
-    template: "%s — Rippit",
+    default: "Orrit",
+    template: "%s — Orrit",
   },
   description: "Real-time monitoring for cross-tool automation workflows",
 };

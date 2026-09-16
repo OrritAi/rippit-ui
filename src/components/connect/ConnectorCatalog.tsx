@@ -46,7 +46,7 @@ function OAuthButton({ connector }: { connector: ConnectorDescriptor }) {
         {!busy && <ArrowRight aria-hidden="true" className="size-3.5" />}
       </Button>
       <p className="text-[11.5px] text-t3">
-        Installs Rippit on one sub-account. OAuth returns workflow names and
+        Installs Orrit on one sub-account. OAuth returns workflow names and
         status only — keep the extension connected for step-level detail.
       </p>
       {error && (
@@ -73,7 +73,7 @@ export function ConnectFlow({
 }) {
   const formId = useId();
   const gates = useLegalGates();
-  // The bookmarklet needs Rippit's real origin baked into its href.
+  // The bookmarklet needs Orrit's real origin baked into its href.
   const origin = useOrigin();
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
@@ -368,7 +368,7 @@ export function ConnectorCatalog({
           </div>
           <div className="min-w-0">
             <p className="text-[13px] font-semibold">More platforms coming</p>
-            <p className="text-[12px] text-t3">Zapier, n8n, Close and more — rippit is built connector-first.</p>
+            <p className="text-[12px] text-t3">Zapier, n8n, Close and more — orrit is built connector-first.</p>
           </div>
         </div>
       ) : (

@@ -22,7 +22,7 @@ export default function WorkflowPickerPage() {
   const recent = useRecentWorkflows().slice(0, 6);
 
   useEffect(() => {
-    document.title = "Workflows — Rippit";
+    document.title = "Workflows — Orrit";
   }, []);
 
   const suggestions = recent.length > 0 ? [] : index.slice(0, 8);

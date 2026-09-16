@@ -34,7 +34,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [loading, session, router]);
 
   useEffect(() => {
-    document.title = "Admin portal — Rippit";
+    document.title = "Admin portal — Orrit";
   }, []);
 
   if (gate === "denied") notFound();

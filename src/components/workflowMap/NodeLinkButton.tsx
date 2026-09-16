@@ -18,18 +18,18 @@ const BASE =
   "inline-flex size-6 flex-none items-center justify-center rounded-control border border-line bg-pill text-t3 transition-colors duration-[var(--dur-fast)]";
 
 /**
- * "Open in Rippit" — the same chrome with a circled arrow ("go there", as
+ * "Open in Orrit" — the same chrome with a circled arrow ("go there", as
  * opposed to the external ↗), for any node of a workflow other than the
  * viewed one: navigates to that workflow's own page (a step deep-links with
  * ?step=). Stops click and pointerdown like the platform link.
  */
-export function RippitLinkButton({ node, className = "" }: { node: MapNode; className?: string }) {
-  if (!node.rippitHref) return null;
+export function OrritLinkButton({ node, className = "" }: { node: MapNode; className?: string }) {
+  if (!node.orritHref) return null;
   return (
-    <MapTip label="Open in Rippit">
+    <MapTip label="Open in Orrit">
       <Link
-        href={node.rippitHref}
-        aria-label={`Open ${node.name} in Rippit`}
+        href={node.orritHref}
+        aria-label={`Open ${node.name} in Orrit`}
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
         className={`${BASE} cursor-pointer hover:border-line-strong hover:text-t1 ${className}`}

@@ -8,7 +8,7 @@ import type { AdNode } from "@/lib/martech/types";
 import { evidenceClasses, selectionRing } from "./evidence";
 
 /*
- * Traffic source. Rippit reads nothing from the ad account: when the
+ * Traffic source. Orrit reads nothing from the ad account: when the
  * platform can be inferred from attribution / conversion targets the card
  * says so; otherwise it is an honest "not captured" outline.
  */

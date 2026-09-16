@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { ago } from "@/lib/time";
 
 /*
- * Martech — every funnel Rippit has detected or an operator has mapped, one
+ * Martech — every funnel Orrit has detected or an operator has mapped, one
  * card each. Detection reads the funnel directory and the workflows already
  * captured; "Map a funnel" creates metadata only. Neither touches
  * GoHighLevel or Make.
@@ -27,7 +27,7 @@ export default function MartechPage() {
   const [newName, setNewName] = useState("");
 
   useEffect(() => {
-    document.title = "Martech — Rippit";
+    document.title = "Martech — Orrit";
   }, []);
 
   const load = useCallback(
@@ -107,7 +107,7 @@ export default function MartechPage() {
               <RowCard className="p-6 text-center">
                 <h2 className="mb-1.5 text-[15px] font-semibold">Connect GoHighLevel to map your funnels</h2>
                 <p className="mx-auto max-w-md text-[13px] text-t2">
-                  Rippit detects funnels from a location&apos;s funnel directory and the workflows it has captured. Connect a location to start.
+                  Orrit detects funnels from a location&apos;s funnel directory and the workflows it has captured. Connect a location to start.
                 </p>
                 <Link href="/settings/connections" className="mt-3 inline-block text-[13px] font-semibold underline-offset-4 hover:underline">
                   Open Settings → Connections

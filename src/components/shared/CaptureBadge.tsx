@@ -24,21 +24,21 @@ function describe(capture: CaptureState): {
     case "failed":
       return {
         label: "Not re-read",
-        detail: `Rippit could not read this on the last sync (${ago(capture.attemptedAt)}). Showing what it captured ${ago(capture.at)}.${capture.error ? ` ${capture.error}` : ""}`,
+        detail: `Orrit could not read this on the last sync (${ago(capture.attemptedAt)}). Showing what it captured ${ago(capture.at)}.${capture.error ? ` ${capture.error}` : ""}`,
         tone: "warn",
         Icon: AlertTriangle,
       };
     case "never-captured":
       return {
         label: "Never read",
-        detail: "This exists in the platform, but Rippit has never managed to read its contents.",
+        detail: "This exists in the platform, but Orrit has never managed to read its contents.",
         tone: "err",
         Icon: CircleSlash,
       };
     case "changed":
       return {
         label: "Changed upstream",
-        detail: `Edited in the platform since Rippit last read it ${ago(capture.at)}.`,
+        detail: `Edited in the platform since Orrit last read it ${ago(capture.at)}.`,
         tone: "warn",
         Icon: Clock,
       };
@@ -56,10 +56,10 @@ const TONE: Record<Tone, string> = {
 };
 
 /**
- * States what Rippit actually has for a workflow, when nothing is wrong with
+ * States what Orrit actually has for a workflow, when nothing is wrong with
  * the workflow itself.
  *
- * This is deliberately worded as Rippit's problem, not the estate's: a failed
+ * This is deliberately worded as Orrit's problem, not the estate's: a failed
  * capture is us failing to read, and presenting it as breakage is the exact
  * false alarm the health model exists to prevent.
  */

@@ -13,7 +13,7 @@ import { runAria, type RunState } from "@/lib/workflowMap/run";
 import { PILL_NAME_MAX_W } from "@/lib/workflowMap/tokens";
 import type { MapNode } from "@/lib/workflowMap/types";
 import { MapTip } from "./MapTip";
-import { NodeLinkButton, RippitLinkButton } from "./NodeLinkButton";
+import { NodeLinkButton, OrritLinkButton } from "./NodeLinkButton";
 import type { RefCallback } from "./useMapMeasure";
 import type { TreeItemProps } from "./useMapKeyboard";
 
@@ -26,7 +26,7 @@ import type { TreeItemProps } from "./useMapKeyboard";
  * The capsule element carries the measure ref (edges leave from its right
  * edge) and the tint. Connected pills wear the accent — a faint tint at rest
  * (6 % bg / 28 % border), stronger when open (7 % / 35 %) and selected
- * (55 %) — and carry a second control, "Open in Rippit". The VIEWED
+ * (55 %) — and carry a second control, "Open in Orrit". The VIEWED
  * workflow's pill (every copy of it) is the map's start state, drawn like an
  * FSM start node: solid `--text` fill, name and chip in `--bg`, and a double
  * ring (`0 0 0 2px --bg, 0 0 0 4px --text`; accent + glow when selected).
@@ -218,7 +218,7 @@ export const WorkflowPill = memo(function WorkflowPill({
               {chip}
             </span>
           ))}
-        <RippitLinkButton node={node} />
+        <OrritLinkButton node={node} />
         <NodeLinkButton node={node} />
       </div>
       {meta && !far && (

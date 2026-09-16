@@ -11,9 +11,9 @@ import { ProvenanceRow, flattenPaths } from "./Provenance";
 /*
  * Step data — what this step actually received and returned.
  *
- * This section replaces the note Rippit used to show on every non-entry step:
+ * This section replaces the note Orrit used to show on every non-entry step:
  * "<platform> does not expose this step's data." That was true of the API
- * Rippit was using and false of the API Make has; the endpoint behind this
+ * Orrit was using and false of the API Make has; the endpoint behind this
  * panel was verified live on 2026-09-12.
  *
  * Three things the shape of this panel is deliberate about:
@@ -24,7 +24,7 @@ import { ProvenanceRow, flattenPaths } from "./Provenance";
  *    is more than one.
  *  - **Dotted paths, not raw JSON.** A row reads straight back into
  *    `{{4.contact.city}}`. Raw is a toggle for when the shape matters more.
- *  - **Two kinds of truncation.** Make's own flag and Rippit's cap are
+ *  - **Two kinds of truncation.** Make's own flag and Orrit's cap are
  *    different facts and are reported as different sentences; neither trims
  *    silently.
  */
@@ -213,9 +213,9 @@ export function StepData({
           Make truncated this bundle when it recorded the run.
         </p>
       )}
-      {current?.cappedBy === "rippit" && (
+      {current?.cappedBy === "orrit" && (
         <p className="m-0 mt-1 text-[10.5px] leading-[1.5] text-warn-text">
-          Too large to show — Rippit caps what it fetches. Open the run in Make for the whole bundle.
+          Too large to show — Orrit caps what it fetches. Open the run in Make for the whole bundle.
         </p>
       )}
       {current?.unparsed && (

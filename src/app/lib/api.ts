@@ -30,7 +30,7 @@ export function setAuthFailureHandler(fn: (() => void) | null) {
 
 /* Active workspace (collaboration scope). Persisted so a reload keeps the
    same workspace; the API resolves the user's default when unset. */
-const WORKSPACE_KEY = "rippit.workspace";
+const WORKSPACE_KEY = "orrit.workspace";
 
 export function getActiveWorkspaceId(): string | null {
   if (typeof window === "undefined") return null;
@@ -46,7 +46,7 @@ export function setActiveWorkspaceId(id: string | null) {
 /* Support context (platform staff viewing a customer organization read-only).
    While set, every request names that organization and carries the support
    header; the API answers with role "support" and no permissions. */
-const SUPPORT_KEY = "rippit.support";
+const SUPPORT_KEY = "orrit.support";
 
 export interface SupportContext {
   workspaceId: string;
@@ -86,11 +86,11 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   if (session) headers.set("Authorization", `Bearer ${session.access_token}`);
   const support = getSupport();
   if (support) {
-    headers.set("X-Rippit-Workspace", support.workspaceId);
-    headers.set("X-Rippit-Support", "1");
+    headers.set("X-Orrit-Workspace", support.workspaceId);
+    headers.set("X-Orrit-Support", "1");
   } else {
     const workspaceId = getActiveWorkspaceId();
-    if (workspaceId) headers.set("X-Rippit-Workspace", workspaceId);
+    if (workspaceId) headers.set("X-Orrit-Workspace", workspaceId);
   }
 
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
@@ -231,7 +231,7 @@ export interface LastRun {
 /** Per-node state of one execution as the API reports it. `touched` may
  *  arrive with a `status` of `error` / `warning` instead of the collapsed
  *  `failed` / `warning`; the map overlay (`lib/workflowMap/run.ts`)
- *  normalises both shapes. `unknown` = Rippit could not check that module
+ *  normalises both shapes. `unknown` = Orrit could not check that module
  *  (coverage cut-off / rate limit), never "did not run". */
 export type RunNodeState = "touched" | "warning" | "failed" | "untouched" | "unknown";
 
@@ -317,7 +317,7 @@ export interface ExecutionPayload {
 /** Where a value came from — the four classes of truth. Colour is spoken for
  *  (status and app identity), so the register rides on the stroke style of a
  *  left rule plus a mono tag; see `components/projection/Provenance.tsx`.
- *  `resolved`/`constant` are Rippit's own arithmetic, `opaque` has known
+ *  `resolved`/`constant` are Orrit's own arithmetic, `opaque` has known
  *  provenance but no computed value, `unresolved` names the step it needs. */
 export type FieldProvenance =
   | "observed"
@@ -335,10 +335,10 @@ export interface BundleOperation {
   input: unknown;
   output: unknown;
   error: boolean;
-  /** Make's own flag, kept distinct from Rippit's cap (`cappedBy`). */
+  /** Make's own flag, kept distinct from Orrit's cap (`cappedBy`). */
   truncated: boolean;
-  /** Set when Rippit dropped the value to stay inside its own ceiling. */
-  cappedBy?: "rippit";
+  /** Set when Orrit dropped the value to stay inside its own ceiling. */
+  cappedBy?: "orrit";
   /** The value would not parse as JSON and is shown as the platform sent it. */
   unparsed?: boolean;
 }
@@ -399,7 +399,7 @@ export interface ProjectedField {
 }
 
 /** How one node's projected path compares to the run that actually happened.
- *  `now-unevaluable` is deliberately not a divergence: a gate Rippit cannot
+ *  `now-unevaluable` is deliberately not a divergence: a gate Orrit cannot
  *  evaluate is a gap, and reporting it as a change would cry wolf on every
  *  workflow containing an external call. */
 export type DiffOutcome =
@@ -722,7 +722,7 @@ export interface RunPayloadState {
 }
 
 /*
- * Everything Rippit stored about one run: every column of the execution row,
+ * Everything Orrit stored about one run: every column of the execution row,
  * every module row, the coverage watermarks, what it carried, deep links,
  * and `raw` — the rows verbatim, so the panel is never a summary of a
  * summary. Provider-agnostic: any platform whose runtime lands answers here.
@@ -1810,7 +1810,7 @@ export interface HealthSummary {
   total: number;
 }
 
-/** `kind: "breakage"` excludes Rippit's own capture failures — the thing that
+/** `kind: "breakage"` excludes Orrit's own capture failures — the thing that
  *  must never be mistaken for the estate being broken. */
 export function fetchIssues(
   kind: "all" | "breakage" | "capture" = "all"
@@ -1927,7 +1927,7 @@ export interface WorkflowCard {
   changedSince?: { count: number; at: string | null };
   ownerUserId?: string;
   watching?: boolean;
-  /** What Rippit actually has for this workflow, and when it got it. */
+  /** What Orrit actually has for this workflow, and when it got it. */
   capture?: CaptureState;
 }
 
@@ -1994,10 +1994,10 @@ export function fetchGraph(keys: { source: ProviderId; refId: string }[] = []): 
  * arrays plus flat top-level `pages`, `automations`, `decisions`,
  * `conversions`, `tracking`, `adPlatform`, `unplaced`, `source`. Everything
  * is evidence-labelled: "configured" (captured from the platform's config)
- * or "not-captured" (Rippit has nothing for it). Never a runtime claim.
+ * or "not-captured" (Orrit has nothing for it). Never a runtime claim.
  */
 
-/** What Rippit can honestly say about a node: captured from configuration,
+/** What Orrit can honestly say about a node: captured from configuration,
  * or not captured at all. There is no third state. */
 export type Evidence = "configured" | "not-captured";
 

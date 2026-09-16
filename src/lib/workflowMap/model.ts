@@ -312,7 +312,7 @@ export function buildMap(input: BuildMapInput): MapModel {
       meta: metaLine(card, now),
       ref,
       isViewed: key === viewedKey || undefined,
-      rippitHref: key === viewedKey ? undefined : `/w/${ref.source}/${ref.refId}`,
+      orritHref: key === viewedKey ? undefined : `/w/${ref.source}/${ref.refId}`,
       nativeUrl: summary?.nativeUrl ?? card?.nativeUrl ?? null,
       path: ownPath,
       children: [],

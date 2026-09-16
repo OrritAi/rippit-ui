@@ -80,7 +80,7 @@ export function activityRow(a: ActivityItem, unread = false): FeedRow {
   return {
     key: `a${a.id}`,
     icon: KIND_ICON[a.kind] ?? Pencil,
-    who: a.actorName ?? "Rippit",
+    who: a.actorName ?? "Orrit",
     text: describeActivity(a),
     sub: (p.workflowName as string) || a.targetKey || a.kind,
     when: a.createdAt,

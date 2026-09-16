@@ -145,7 +145,7 @@ export default function LoginPage() {
           >
             <div className="size-3 rounded-full bg-bg" />
           </div>
-          <h1 className="text-[27px] font-bold tracking-[-0.5px]">rippit</h1>
+          <h1 className="text-[27px] font-bold tracking-[-0.5px]">orrit</h1>
           <p className="mt-1.5 text-[14px] text-t2">{TITLES[mode]}</p>
         </div>
 
@@ -319,7 +319,7 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-6 text-center font-mono text-[11px] text-t3">
-          rippit · workflow monitor
+          orrit · workflow monitor
         </p>
       </div>
     </main>

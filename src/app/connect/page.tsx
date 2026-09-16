@@ -29,7 +29,7 @@ import {
   type HandoffPayload,
 } from "@/lib/bookmarklet";
 
-const STASH_KEY = "rippit.connect.handoff";
+const STASH_KEY = "orrit.connect.handoff";
 // Mirrors MAX_CONTAINERS_PER_REQUEST on the API.
 const MAX_PER_REQUEST = 25;
 
@@ -68,7 +68,7 @@ export default function ConnectPage() {
     if (!payload.current) {
       setPhase("error");
       setMessage(
-        "Nothing to connect. Click the Rippit bookmark from a GoHighLevel tab."
+        "Nothing to connect. Click the Orrit bookmark from a GoHighLevel tab."
       );
     }
   }, []);
@@ -139,8 +139,8 @@ export default function ConnectPage() {
         </h1>
         <p className="mt-1 text-[13.5px] text-t2">
           {phase === "choosing"
-            ? `Your session works. Choose which ${noun}s Rippit should read.`
-            : "Handing your GoHighLevel session to Rippit."}
+            ? `Your session works. Choose which ${noun}s Orrit should read.`
+            : "Handing your GoHighLevel session to Orrit."}
         </p>
       </header>
 
@@ -157,7 +157,7 @@ export default function ConnectPage() {
       {phase === "signin" && (
         <div className="flex flex-col gap-3 rounded-card border border-line bg-panel p-4">
           <p className="text-[13.5px] text-t2">
-            Sign in to Rippit and this will pick up where it left off — your
+            Sign in to Orrit and this will pick up where it left off — your
             GoHighLevel session is held in this tab only.
           </p>
           <Button
@@ -200,7 +200,7 @@ export default function ConnectPage() {
                 of {noun}s to choose from.
               </p>
               <p className="mt-2 text-t3">
-                Open a {noun} in GoHighLevel and click the Rippit bookmark again
+                Open a {noun} in GoHighLevel and click the Orrit bookmark again
                 — connecting from inside one picks it up directly.
               </p>
             </div>
@@ -227,7 +227,7 @@ export default function ConnectPage() {
             onClick={() => router.push("/dashboard")}
             className="h-auto w-full cursor-pointer rounded-control py-2.5 text-[13.5px] font-semibold"
           >
-            Open Rippit
+            Open Orrit
             <ArrowRight aria-hidden="true" className="size-3.5" />
           </Button>
         </div>

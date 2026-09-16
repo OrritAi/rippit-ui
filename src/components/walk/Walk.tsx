@@ -126,7 +126,7 @@ export function Walk({
   if (stages.length === 0) {
     return (
       <div className="relative flex flex-1 items-center justify-center bg-bg">
-        <p className="text-[12.5px] text-t3">This run reached no steps Rippit can show.</p>
+        <p className="text-[12.5px] text-t3">This run reached no steps Orrit can show.</p>
         <ExitButton onExit={onExit} />
       </div>
     );
@@ -139,7 +139,7 @@ export function Walk({
       aria-label={`Walking ${runLabel}, stage ${index + 1} of ${stages.length}`}
     >
       {/* Ground, ceiling, horizon and stars: the whole reason the world has a
-          sense of depth. All CSS gradients — no images anywhere in Rippit. */}
+          sense of depth. All CSS gradients — no images anywhere in Orrit. */}
       <Ambience reduced={reduced} />
 
       <div

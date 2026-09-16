@@ -1,6 +1,6 @@
 /*
  * Monitor fixtures + theme tables, ported from the design handoff
- * (Rippit Monitor v5). Real-data integration points: node metrics /
+ * (Orrit Monitor v5). Real-data integration points: node metrics /
  * payloads (per-run API), feed (run event stream), timeline buckets
  * (aggregation query), pulse triggering (per real execution).
  */
@@ -325,7 +325,7 @@ export const NODES: MonitorNode[] = [
     payload: { channel: "#leads", ts: "1755100212.0031", blocks: 4 },
     config: [
       ["Channel", "#leads"],
-      ["As", "Rippit bot"],
+      ["As", "Orrit bot"],
       ["Blocks", "lead card v2"],
       ["Thread", "none"],
     ],

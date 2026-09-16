@@ -85,5 +85,5 @@ export interface RecentEntry {
 }
 const EMPTY_RECENT: RecentEntry[] = [];
 export function useRecentWorkflows(): RecentEntry[] {
-  return useStoredJson<RecentEntry[]>("rippit.recent", EMPTY_RECENT, ["rippit:recent"]);
+  return useStoredJson<RecentEntry[]>("orrit.recent", EMPTY_RECENT, ["orrit:recent"]);
 }

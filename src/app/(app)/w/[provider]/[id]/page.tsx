@@ -205,7 +205,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
           trace: null,
           error:
             e instanceof ApiError && e.status === 404
-              ? `Run ${runId} is not among the runs Rippit holds for this ${connector.nouns.workflow} — it may be older than the retained history.`
+              ? `Run ${runId} is not among the runs Orrit holds for this ${connector.nouns.workflow} — it may be older than the retained history.`
               : e instanceof Error && e.message
                 ? e.message
                 : "Could not load this run.",
@@ -221,11 +221,11 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
 
   useEffect(() => {
     if (!data) return;
-    document.title = historyOpen ? `${data.summary.name} — History — Rippit` : `${data.summary.name} — Rippit`;
-    const prev = readStored<RecentEntry[]>("rippit.recent", []);
+    document.title = historyOpen ? `${data.summary.name} — History — Orrit` : `${data.summary.name} — Orrit`;
+    const prev = readStored<RecentEntry[]>("orrit.recent", []);
     const next: RecentEntry[] = [{ provider, id, name: data.summary.name, at: Date.now() }, ...prev.filter((r) => !(r.provider === provider && r.id === id))].slice(0, 8);
-    writeStored("rippit.recent", next);
-    window.dispatchEvent(new Event("rippit:recent"));
+    writeStored("orrit.recent", next);
+    window.dispatchEvent(new Event("orrit:recent"));
   }, [data, provider, id, historyOpen]);
 
   useEffect(() => {
@@ -636,7 +636,7 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
       {summary.stepsUnavailable && (
         <p role="status" className="flex flex-none flex-wrap items-center gap-x-2 border-b border-line2 px-3 py-1.5 text-[12px] text-t2">
           <span className="font-semibold text-t1">Steps unavailable via OAuth.</span>
-          HighLevel&apos;s official API returns workflow names and status only. Connect this location with the Rippit Chrome extension to see its steps, triggers and links here.
+          HighLevel&apos;s official API returns workflow names and status only. Connect this location with the Orrit Chrome extension to see its steps, triggers and links here.
           <Link href="/settings/connections" className="font-semibold underline-offset-2 hover:underline">
             Open Settings → Connections
           </Link>
@@ -739,7 +739,7 @@ const BANNER_STYLE = {
 /*
  * "Replay · run e12 · failed · 7/9 steps", with the platform link and the
  * stop control as icons. Per-step failures and warnings are already ringed
- * on the map, so the row only adds what the map cannot show: steps Rippit
+ * on the map, so the row only adds what the map cannot show: steps Orrit
  * could not check, a blueprint edited since the run, and a trace that would
  * not load. The × (and Esc, once nothing else is open) stops the replay.
  */

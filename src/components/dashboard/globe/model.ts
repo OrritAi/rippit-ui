@@ -9,7 +9,7 @@ import { markerShape, type MarkerShape } from "./palette";
 /*
  * Link map → globe model. Pure and memoisable. The one rule that matters:
  * a node's colour must trace back to the health signal model. Errors and
- * warnings come from breakage issues only — capture problems (Rippit could
+ * warnings come from breakage issues only — capture problems (Orrit could
  * not read the workflow) are flagged `data.capture` by the API and render
  * grey, never as an incident.
  */

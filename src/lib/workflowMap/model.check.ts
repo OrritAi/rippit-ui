@@ -486,15 +486,15 @@ const base = { viewed: PROTOTYPE_VIEWED, linkMap: PROTOTYPE.linkMap, summaries: 
   assert(pm.pairs.filter((p) => p.from === scen.id).length === 1, "the scenario pill connects to its first module only");
 }
 
-/* ── viewed vs connected: isViewed + rippitHref ── */
+/* ── viewed vs connected: isViewed + orritHref ── */
 {
   const m = buildMap({ ...base, expanded: { ...initialExpanded(PROTOTYPE.linkMap, PROTOTYPE_VIEWED), "wf:ghl:pcf-a": true } });
   const viewedPills = m.flat.filter((n) => n.ref?.refId === "912");
-  assert(viewedPills.length === 1 && viewedPills[0].isViewed === true && viewedPills[0].rippitHref === undefined, "the viewed pill is flagged isViewed and has no Rippit link");
-  assert(m.callers.every((r) => r.isViewed === undefined && r.rippitHref === `/w/ghl/${r.ref!.refId}`), "connected caller pills link to their Rippit page");
-  assert(m.byId.get("wf:ghl:pcf-a/wf:make:913")?.rippitHref === "/w/make/913", "a connected target pill links to its Rippit page");
-  assert(m.byId.get("wf:ghl:pcf-a/m:t1")?.rippitHref === undefined && m.flat.filter((n) => !n.pill).every((n) => n.rippitHref === undefined), "steps and routes never carry a Rippit link — connected pills only");
-  assert(m.byId.get("wf:make:912/m:3")?.rippitHref === undefined && m.byId.get("wf:make:912/m:3/route:3:0")?.rippitHref === undefined, "the viewed workflow's own steps and routes carry no Rippit link");
+  assert(viewedPills.length === 1 && viewedPills[0].isViewed === true && viewedPills[0].orritHref === undefined, "the viewed pill is flagged isViewed and has no Orrit link");
+  assert(m.callers.every((r) => r.isViewed === undefined && r.orritHref === `/w/ghl/${r.ref!.refId}`), "connected caller pills link to their Orrit page");
+  assert(m.byId.get("wf:ghl:pcf-a/wf:make:913")?.orritHref === "/w/make/913", "a connected target pill links to its Orrit page");
+  assert(m.byId.get("wf:ghl:pcf-a/m:t1")?.orritHref === undefined && m.flat.filter((n) => !n.pill).every((n) => n.orritHref === undefined), "steps and routes never carry a Orrit link — connected pills only");
+  assert(m.byId.get("wf:make:912/m:3")?.orritHref === undefined && m.byId.get("wf:make:912/m:3/route:3:0")?.orritHref === undefined, "the viewed workflow's own steps and routes carry no Orrit link");
 }
 
 /* ── nativeUrl: pills carry their own, steps/routes inherit the owner's ── */

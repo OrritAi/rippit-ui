@@ -38,10 +38,10 @@ import { ExpandToggle, useClamp } from "@/components/shared/ExpandableText";
  */
 
 type Sev = "err" | "warn" | null;
-const OPEN_KEY = "rippit.browser.open";
-const CONN_KEY = "rippit.browser.connOpen";
-const PROVIDER_ORDER_KEY = "rippit.browser.providerOrder";
-const CONN_ORDER_KEY = "rippit.browser.connOrder";
+const OPEN_KEY = "orrit.browser.open";
+const CONN_KEY = "orrit.browser.connOpen";
+const PROVIDER_ORDER_KEY = "orrit.browser.providerOrder";
+const CONN_ORDER_KEY = "orrit.browser.connOrder";
 const HIT_CAP = 30;
 const EMPTY_OPEN: Record<string, string | null> = {};
 const EMPTY_CONN: Record<string, boolean> = {};

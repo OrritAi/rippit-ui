@@ -23,12 +23,12 @@ import {
  *    recognise a page by its pathname
  */
 
-/* Deliberately not `rippit.railOpen`. That key holds values nobody chose: a
+/* Deliberately not `orrit.railOpen`. That key holds values nobody chose: a
  * navigation under 1100px used to write a collapse straight to storage, so an
  * existing "0" is as likely to be an accident as a preference and there is no
  * way to tell them apart. Reading a fresh key discards the lot once and lets
  * the corrected default apply. The old key is abandoned, not migrated. */
-const RAIL_KEY = "rippit.railOpen.v2";
+const RAIL_KEY = "orrit.railOpen.v2";
 
 /** Below this the browser column is an overlay, not a column. Shared with
  *  `Shell`, which does the layout, so one number decides both. */

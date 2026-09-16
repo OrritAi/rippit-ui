@@ -310,13 +310,13 @@ export const PROTOTYPE_PROJECTION: Projection = {
         operands: [{ operator: "number:gte", left: 400, right: "1000", verdict: false }],
       },
     },
-    { nodeId: "5", state: "unknown", gate: { evaluated: null, label: null, reason: "depends on the output of step 4, which Rippit cannot compute", operands: [], blockedBy: "4" } },
+    { nodeId: "5", state: "unknown", gate: { evaluated: null, label: null, reason: "depends on the output of step 4, which Orrit cannot compute", operands: [], blockedBy: "4" } },
     { nodeId: "6", state: "untouched", gate: null },
   ],
   fields: {},
   frames: {},
   partial: true,
-  notes: ["Projected by Rippit — no run happened."],
+  notes: ["Projected by Orrit — no run happened."],
   projection: {
     source: "typed",
     inputHash: null,
@@ -382,7 +382,7 @@ export const PROTOTYPE_PAYLOAD: ExecutionPayload = {
   },
   bytes: 212,
   truncated: false,
-  note: "Fetched from Make just now and shown once — Rippit does not store run data.",
+  note: "Fetched from Make just now and shown once — Orrit does not store run data.",
 };
 
 /** `n` callers cloned from the four roots — exercises LITE and root windowing. */

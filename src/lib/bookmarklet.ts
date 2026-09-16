@@ -1,5 +1,5 @@
 /*
- * The Rippit connect bookmarklet, as a `javascript:` URL.
+ * The Orrit connect bookmarklet, as a `javascript:` URL.
  *
  * Mirrors `rippit-extension/bookmarklet/connect.src.js`, which is the readable
  * source and carries the test harness. Kept in sync by hand — it is ~30 lines
@@ -7,14 +7,14 @@
  *
  * Three properties matter:
  *
- *  - **It carries no Rippit credential.** The handoff lands on Rippit's own
+ *  - **It carries no Orrit credential.** The handoff lands on Orrit's own
  *    page where the user is already signed in, so the session does the
  *    claiming. Baking a token in would make the bookmarklet itself a bearer
  *    credential for the workspace.
  *  - **It never calls the API from GoHighLevel's origin.** It opens a tab to
  *    `/connect` with the payload in the URL *fragment*, which is never sent to
  *    any server — so the GHL token stays out of request lines and access logs,
- *    and Rippit's CORS list needn't cover every white-label agency domain.
+ *    and Orrit's CORS list needn't cover every white-label agency domain.
  *  - **No alert()/confirm().** A modal on GHL's page would be rude and
  *    blocking; failures arrive as an `error` code on the same handoff.
  */
@@ -32,7 +32,7 @@ q.onsuccess=function(){var r=q.result||[];for(var i=0;i<r.length;i++){var v=r[i]
 catch(c){return h({error:typeof c==="string"?c:"read-failed"})}
 h(m?{rt:t,loc:m[1]}:{rt:t})})();`;
 
-/** The draggable `href`. `base` is Rippit's own origin. */
+/** The draggable `href`. `base` is Orrit's own origin. */
 export function bookmarkletHref(base: string): string {
   const origin = base.replace(/\/+$/, "");
   const filled = SOURCE.replace(/\s*\n\s*/g, "").replace("__BASE__", origin);

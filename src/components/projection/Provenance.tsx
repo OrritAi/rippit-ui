@@ -4,12 +4,12 @@ import type { FieldProvenance } from "@/app/lib/api";
  * The provenance register — the design's core decision, and the thing that
  * keeps this feature honest.
  *
- * Rippit now has four classes of truth: what the platform recorded
- * (`observed`), what the operator typed (`supplied`), what Rippit worked out
+ * Orrit now has four classes of truth: what the platform recorded
+ * (`observed`), what the operator typed (`supplied`), what Orrit worked out
  * (`resolved` / `constant` / `opaque`), and what nothing supplies
  * (`unresolved`). They appear side by side in one panel, and the failure this
  * exists to prevent is an observed value and a computed value rendering in the
- * same typography. If a row cannot answer *did this happen, or did Rippit work
+ * same typography. If a row cannot answer *did this happen, or did Orrit work
  * it out*, it is wrong.
  *
  * Colour cannot carry it: in this product colour is reserved for status and

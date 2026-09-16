@@ -185,7 +185,7 @@ export function ChangesBody({
         {error && <p role="alert" className="px-1.5 text-[12px] text-err-text">{error}</p>}
         {!data && !error && <p className="px-1.5 text-[12px] text-t3">Loading…</p>}
         {data && data.changes.length === 0 && (
-          <p className="px-1.5 text-[12px] text-t3" title="Rippit snapshots this workflow on every sync and lists what differs from the previous snapshot.">
+          <p className="px-1.5 text-[12px] text-t3" title="Orrit snapshots this workflow on every sync and lists what differs from the previous snapshot.">
             No changes recorded yet.
           </p>
         )}

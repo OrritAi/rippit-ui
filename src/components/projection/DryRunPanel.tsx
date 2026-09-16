@@ -105,7 +105,7 @@ export function DryRunPanel({
           <p className="m-0 text-[11.5px] leading-[1.5] text-t3">{contract?.reason ?? "This platform cannot be projected yet."}</p>
         ) : fields.length === 0 ? (
           <p className="m-0 text-[11.5px] leading-[1.5] text-t3">
-            This workflow&apos;s steps don&apos;t read any trigger fields Rippit can see, so there is
+            This workflow&apos;s steps don&apos;t read any trigger fields Orrit can see, so there is
             nothing to fill in.
           </p>
         ) : (

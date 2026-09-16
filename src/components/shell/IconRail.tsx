@@ -96,12 +96,12 @@ export function IconRail() {
   return (
     <TooltipProvider delayDuration={250} skipDelayDuration={400}>
     <nav
-      aria-label="Rippit"
+      aria-label="Orrit"
       className="flex h-full w-[52px] flex-none flex-col items-center gap-1 border-r border-line2 bg-sidebar px-0 py-[10px]"
     >
       <Link
         href="/dashboard"
-        aria-label="Rippit home"
+        aria-label="Orrit home"
         className="mb-[10px] mt-[2px] flex size-5 rotate-45 items-center justify-center rounded-[6px] bg-t1 transition-transform duration-[var(--dur)] ease-[var(--ease-out)] hover:rotate-[135deg]"
       >
         <span aria-hidden="true" className="size-1.5 rounded-full bg-bg" />

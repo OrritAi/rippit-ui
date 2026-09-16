@@ -173,7 +173,7 @@ export interface WorkflowMapViewProps {
   onOverrideField?: (nodeId: string, key: string, current: unknown) => void;
 }
 
-const TOOLS_KEY = "rippit.map.toolsHidden";
+const TOOLS_KEY = "orrit.map.toolsHidden";
 const canUnfold = (n: MapNode) =>
   !!n.pill &&
   !n.pill.pinned &&

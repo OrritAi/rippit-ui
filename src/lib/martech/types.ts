@@ -32,7 +32,7 @@ interface NodeBase {
   lane: MartechLane;
   label: string;
   sublabel?: string | null;
-  /** What Rippit can say about this node. Drives the dashed "not captured" look. */
+  /** What Orrit can say about this node. Drives the dashed "not captured" look. */
   evidence: Evidence;
   /** Owning stage; null for the ad platform. "unplaced" for the not-placed column. */
   stageId: string | null;

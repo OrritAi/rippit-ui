@@ -26,7 +26,7 @@ import { nodeLink } from "./nodeLink";
  * MapSidebar — the 322px panel for the selected node. Only what informs:
  * header (puck · name · "App · #ordinal" · ×, plus a health line only when
  * something is wrong) → actions → exception notes only (a "Go to" step's
- * target with Show, a Make step's filter/wait, a pill whose steps Rippit
+ * target with Show, a Make step's filter/wait, a pill whose steps Orrit
  * cannot show, the changed/comments note) → Issues (when any) → Runs (Make
  * only, when there is run data) → "Replay · in this run" while a run is
  * replayed (triage-accented header; state, bundle count, warning / error
@@ -140,8 +140,8 @@ export function MapSidebar({
   } else if (isPill) {
     const p = node.pill;
     if (p?.unavailable) notes.push("This connection exposes names and status only, not steps");
-    else if (p?.error === "not-captured") notes.push(`Rippit has not captured this ${connector.nouns.workflow}'s steps yet`);
-    else if (p?.error === "not-synced") notes.push(`This ${connector.nouns.workflow} is not synced into Rippit`);
+    else if (p?.error === "not-captured") notes.push(`Orrit has not captured this ${connector.nouns.workflow}'s steps yet`);
+    else if (p?.error === "not-synced") notes.push(`This ${connector.nouns.workflow} is not synced into Orrit`);
     else if (p?.error === "fetch-failed") notes.push("Its steps could not be fetched just now");
     if (p?.link?.status === "dead") notes.push("The link into this workflow is dead");
   }
@@ -169,9 +169,9 @@ export function MapSidebar({
         </MapTip>
       </div>
       <div className="mb-5 mt-3 flex flex-wrap items-center gap-2">
-        {node.pill && node.rippitHref && (
+        {node.pill && node.orritHref && (
           <Button size="sm" variant="ghost" asChild>
-            <Link href={node.rippitHref}>Open in Rippit</Link>
+            <Link href={node.orritHref}>Open in Orrit</Link>
           </Button>
         )}
         {link.href ? (
@@ -306,7 +306,7 @@ const rateLimitText = (platform: string, retryAfter: number | null | undefined) 
  * state line, the bundle count, warning / error text (wrapped, never
  * clamped). The entry node (webhook request) — or the cause module of an
  * incomplete run (its bundle) — carries "Load input": fetched through from
- * the platform at that moment, rendered once, never stored by Rippit.
+ * the platform at that moment, rendered once, never stored by Orrit.
  * What every *other* step received and returned is the Step data section
  * below, on the same fetch-through terms. For a related workflow's step the
  * section is "Replay · in the related run" and names that execution first.

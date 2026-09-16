@@ -18,7 +18,7 @@ import {
 
 /*
  * The active organization — the collaboration scope every API call is made
- * in (X-Rippit-Workspace). Loaded once per signed-in user; switching
+ * in (X-Orrit-Workspace). Loaded once per signed-in user; switching
  * persists the choice, clears caches and remounts the data providers
  * (layout keys on `current.id`).
  *

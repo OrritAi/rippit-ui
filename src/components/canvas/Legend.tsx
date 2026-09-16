@@ -54,7 +54,7 @@ const ITEMS: Item[] = [
   {
     swatch: <span className="size-3 rounded-[5px] border-2" style={{ borderColor: "var(--chg)", boxShadow: "0 0 6px var(--chg)" }} />,
     label: "Changed since you last looked",
-    hint: "Rippit snapshot diff at sync — open Changes for details",
+    hint: "Orrit snapshot diff at sync — open Changes for details",
   },
   {
     swatch: <span className="size-2.5 rounded-full border-2 border-plane" style={{ background: "var(--warn)" }} />,
@@ -70,7 +70,7 @@ const ITEMS: Item[] = [
   },
   // Step data's provenance register. The Legend is the single vocabulary, so
   // every mark that carries meaning gets a row — these four are how a panel
-  // answers "did this happen, or did Rippit work it out".
+  // answers "did this happen, or did Orrit work it out".
   {
     swatch: <span className="h-4 w-0" style={{ borderLeft: "2px solid var(--t2)" }} />,
     label: "Observed",
@@ -84,12 +84,12 @@ const ITEMS: Item[] = [
   {
     swatch: <span className="h-4 w-0" style={{ borderLeft: "2px dashed var(--t3)" }} />,
     label: "Computed",
-    hint: "Rippit worked it out from the steps above — not what the platform reported",
+    hint: "Orrit worked it out from the steps above — not what the platform reported",
   },
   {
     swatch: <span className="h-4 w-0" style={{ borderLeft: "2px dotted var(--t3)" }} />,
     label: "Needs a step",
-    hint: "Depends on a step's output Rippit cannot compute; supply it to continue",
+    hint: "Depends on a step's output Orrit cannot compute; supply it to continue",
   },
 ];
 

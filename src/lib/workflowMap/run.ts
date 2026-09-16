@@ -12,7 +12,7 @@ import { ZOOM_MIN } from "./tokens.ts";
  *   warning    ran with a warning
  *   failed     ran and errored — the cause module
  *   untouched  inside coverage and no module row: the run did not reach it
- *   unknown    Rippit could not check it (coverage cut-off / rate limit) —
+ *   unknown    Orrit could not check it (coverage cut-off / rate limit) —
  *              honest "not checked", never "did not run"
  *   reached    a workflow pill attached under a touched calling step (the
  *              platform cannot tie the callee's execution to this one)
@@ -21,7 +21,7 @@ import { ZOOM_MIN } from "./tokens.ts";
  * share their state. A route inherits `touched` when any step below it is
  * touched, `unknown` when any is unknown, else `untouched`. Steps of other
  * workflows carry no state (rendered normally): `unknown` is reserved for
- * modules Rippit tried to check.
+ * modules Orrit tried to check.
  *
  * Related runs: the trace's `related[]` names other executions that carried
  * the same record around the same time. When the host has fetched such a
@@ -155,7 +155,7 @@ export function runStates(
   return out;
 }
 
-/** Nodes the run did not reach or Rippit could not check — grayed, never hidden. */
+/** Nodes the run did not reach or Orrit could not check — grayed, never hidden. */
 export function dimNodeIds(states: ReadonlyMap<string, RunState>): ReadonlySet<string> {
   const out = new Set<string>();
   for (const [id, s] of states) if (s === "untouched" || s === "unknown") out.add(id);
@@ -190,7 +190,7 @@ export function runSummary(trace: ExecutionTrace): string {
   return parts.join(" · ");
 }
 
-/** Modules Rippit could not check for this run (a partial trace). */
+/** Modules Orrit could not check for this run (a partial trace). */
 export function runUnchecked(trace: ExecutionTrace): number {
   return trace.nodes.filter((n) => nodeState(n) === "unknown").length;
 }

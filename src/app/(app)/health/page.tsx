@@ -75,7 +75,7 @@ export default function HealthPage() {
   const all = useWorkflowIndex();
 
   useEffect(() => {
-    document.title = "Health — Rippit";
+    document.title = "Health — Orrit";
   }, []);
 
   const accountOf = useMemo(() => new Map(connections.map((c) => [c.id, c.displayName])), [connections]);
@@ -114,7 +114,7 @@ export default function HealthPage() {
   );
   const healthyCount = rows.length - unhealthy.length;
 
-  // Workflows Rippit could not read. Deliberately kept out of the breakage
+  // Workflows Orrit could not read. Deliberately kept out of the breakage
   // counts: a capture failure means the map may be wrong, not that the estate
   // is broken, and conflating the two is how a monitoring product loses trust.
   const captureProblems = useMemo(
@@ -154,10 +154,10 @@ export default function HealthPage() {
               <CircleSlash aria-hidden="true" className="mt-0.5 size-4 flex-none text-warn-text" />
               <div className="min-w-0 flex-1">
                 <p className="text-[12.5px] font-semibold text-t1">
-                  {captureProblems.length} workflow{captureProblems.length === 1 ? "" : "s"} Rippit could not read
+                  {captureProblems.length} workflow{captureProblems.length === 1 ? "" : "s"} Orrit could not read
                 </p>
                 <p className="mt-0.5 text-[11.5px] text-t3">
-                  This is a gap in what Rippit captured, not a fault in your automations — what is
+                  This is a gap in what Orrit captured, not a fault in your automations — what is
                   shown for {captureProblems.length === 1 ? "it" : "them"} may be out of date, and
                   breakage checks that depend on the full estate are paused.
                 </p>
