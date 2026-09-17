@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import posthog from "posthog-js";
 import { toast } from "sonner";
 import { renameWorkspace } from "@/app/lib/api";
 import { useRole, useWorkspace } from "@/components/app/WorkspaceProvider";
@@ -33,6 +34,7 @@ export default function OrganizationPage() {
     setBusy(true);
     try {
       await renameWorkspace(current.id, next);
+      posthog.capture("workspace_renamed");
       toast.success(`Organization renamed to ${next}`);
       setName("");
       refresh();

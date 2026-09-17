@@ -34,6 +34,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Any sibling build dir too. `.next/**` does not match `.next-check/`,
+    // which is how 135MB of compiled chunks ended up being linted — and,
+    // separately, scanned by Tailwind, which emitted utilities extracted from
+    // binary output and broke the dev server with a CSS parse error pointing
+    // at a line number that did not exist in the source.
+    ".next-*/**",
   ]),
 ]);
 

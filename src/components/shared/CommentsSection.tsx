@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import posthog from "posthog-js";
 import { Check, CornerDownRight, Trash2, Undo2 } from "lucide-react";
 import {
   Comment,
@@ -151,6 +152,7 @@ export function CommentsThread({
     setError("");
     try {
       await createComment({ targetType, targetKey, body, parentId: replyTo });
+      posthog.capture("comment_created", { target_type: targetType, is_reply: Boolean(replyTo) });
       setDraft("");
       setReplyTo(null);
       reload();
@@ -257,9 +259,14 @@ function CommentBody({
               disabled={busy}
               onClick={async () => {
                 setBusy(true);
-                await patchComment(c.id, { resolved: !c.resolvedAt }).catch(() => {});
-                setBusy(false);
-                onChanged();
+                try {
+                  await patchComment(c.id, { resolved: !c.resolvedAt });
+                  posthog.capture("comment_resolution_toggled", { resolved: !c.resolvedAt });
+                } catch {
+                } finally {
+                  setBusy(false);
+                  onChanged();
+                }
               }}
               aria-label={c.resolvedAt ? "Reopen thread" : "Resolve thread"}
               title={c.resolvedAt ? "Reopen" : "Resolve"}

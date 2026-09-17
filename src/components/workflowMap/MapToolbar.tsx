@@ -3,11 +3,14 @@
 import { SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Segmented } from "@/components/shared/Segmented";
+import type { Layer } from "@/lib/workflowMap/types";
 import { MapTip } from "./MapTip";
 
 /*
  * Floating glass toolbar (top-left of the canvas): the filter input, the
- * Expand all / Collapse all ghost buttons, and the zoom cluster
+ * Overview / Structure / Steps rung control, the Expand all / Collapse all
+ * ghost buttons, and the zoom cluster
  * (− · percentage (click = 100 %) · + · Fit). The input is controlled by
  * the shell, which debounces it into the model query. The × at its end
  * folds it to one small icon button in the same corner (the shell persists
@@ -19,6 +22,9 @@ export function MapToolbar({
   onQuery,
   onExpandAll,
   onCollapseAll,
+  layer,
+  onLayer,
+  withheld,
   zoom,
   onZoomIn,
   onZoomOut,
@@ -32,6 +38,11 @@ export function MapToolbar({
   onQuery: (q: string) => void;
   onExpandAll: () => void;
   onCollapseAll: () => void;
+  /** Which rung of the ladder is drawn. Independent of zoom, always. */
+  layer: Layer;
+  onLayer: (l: Layer) => void;
+  /** Steps the fold cards are standing for right now. */
+  withheld: number;
   zoom: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -98,6 +109,30 @@ export function MapToolbar({
           </span>
         )}
       </div>
+      <MapTip
+        label={
+          layer === "macro"
+            ? `What this workflow is — ${withheld} steps stand behind these cards`
+            : layer === "structure"
+              ? withheld > 0
+                ? `Every distinct branch drawn once — ${withheld} steps stand behind their patterns`
+                : "Every distinct branch drawn once; this workflow repeats nothing"
+              : "Every step drawn, however much it repeats"
+        }
+      >
+        <span>
+          <Segmented<Layer>
+            value={layer}
+            onChange={onLayer}
+            label="How much of the workflow to draw"
+            options={[
+              { value: "macro", label: "Overview" },
+              { value: "structure", label: "Structure" },
+              { value: "steps", label: "Steps" },
+            ]}
+          />
+        </span>
+      </MapTip>
       <Button variant="ghost" size="sm" onClick={onExpandAll}>
         Expand all
       </Button>

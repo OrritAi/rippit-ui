@@ -527,6 +527,21 @@ export function fetchBundles(
   );
 }
 
+/** The repeated structure in one workflow, so the canvas can draw each
+ *  pattern once. `colocated` narrows `groups` to what a single card could
+ *  actually stand for — `elements` and the counts are identical either way,
+ *  and the canvas reads those. Read-side only: it derives from the stored
+ *  contract, reaches no platform and captures nothing. */
+export function fetchShapes(
+  provider: ProviderId,
+  externalId: string,
+  scope: "all" | "colocated" = "colocated"
+): Promise<WorkflowShapes> {
+  return apiFetch<WorkflowShapes>(
+    `/workflows/${provider}/${encodeURIComponent(externalId)}/shapes?scope=${scope}`
+  );
+}
+
 /** What this workflow expects as input, derived from its own blueprint. */
 export function fetchInputContract(provider: ProviderId, externalId: string): Promise<InputContract> {
   return apiFetch<InputContract>(
@@ -1304,8 +1319,110 @@ export interface Connection {
   from: NodeId;
   to: NodeId;
   label?: string;
+  /** Why execution takes this branch — "Outcome is 'No-Showed'". Belongs to
+   *  the line, not to either end: putting the predicate on the branch's
+   *  first step would conflate "what this step is" with "why we came here".
+   *  Null on every edge that is not a conditional branch, and on branches
+   *  whose platform exposes no readable predicate. */
+  condition?: string | null;
   kind?: string;
   status?: "ok" | "dead" | "unmatched";
+}
+
+/**
+ * `GET /workflows/{provider}/{id}/shapes` — the repeated structure in one
+ * workflow, so the canvas can draw each pattern once.
+ *
+ * Two answers, for two questions. `groups` says WHAT repeats, wherever it
+ * occurs, which is the estate view's question. `elements` says WHERE, as a
+ * tree of positions, which is the canvas's — and the difference is not a
+ * detail: a singleton arm is still one card, a run of like steps is one tile
+ * whatever its length, and an arm is a recursion boundary. None of that is
+ * expressible in a flat group list, and the canvas reads `elements` alone.
+ *
+ * Every id here is a step id of the workflow — the same ids `ModuleInfo.id`
+ * and `?step=` use.
+ */
+export interface ShapeMember {
+  /** The step this member is rooted at. */
+  id: NodeId;
+  /** Its branch label, as the platform wrote it ("No-Showed"). */
+  label: string;
+  /** Every step it covers — the fold plan, so no caller walks the graph again. */
+  nodeIds: NodeId[];
+  /** `nodeIds.length`. */
+  count: number;
+}
+
+export interface ShapeSignature {
+  nodeCount: number;
+  depth: number;
+  hash: string;
+}
+
+/**
+ * One thing a reader sees, and what it stands for.
+ *  - `tile` — consecutive steps on one target, drawn as one card.
+ *  - `fan`  — a branch point; it draws nothing itself, its arms are its
+ *             `children`.
+ *  - `arm`  — one outcome, with `count` members behind it. One member is
+ *             still a card: grouping needs two, drawing does not.
+ */
+export interface ShapeElement {
+  kind: "tile" | "fan" | "arm";
+  target: string;
+  count: number;
+  depth: number;
+  /** Every real step this element stands for. */
+  nodeIds: NodeId[];
+  signature?: ShapeSignature;
+  /** Arms only: the step the card draws — `members[0].id`. */
+  representative?: NodeId;
+  /** Arms only, representative first. */
+  members?: ShapeMember[];
+  /** Arms only: every step behind the members this card does not draw. */
+  hidden?: NodeId[];
+  /** What opening this element reveals. */
+  children?: ShapeElement[];
+}
+
+/** One repetition, wherever it occurs. The canvas reads `elements`, not this. */
+export interface ShapeGroup {
+  kind: "shape" | "run";
+  signature: ShapeSignature;
+  representative: NodeId;
+  count: number;
+  target: string;
+  /** The fan-out these are the arms of, or null for a run. */
+  fanOut: NodeId | null;
+  nestedIn: number | null;
+  /** Whether one card could stand for every member — they occupy one
+   *  position. Deliberately not the same as `fanOut != null`. */
+  colocated: boolean;
+  members: ShapeMember[];
+  assets?: AssetRef[];
+}
+
+export interface WorkflowShapes {
+  groups: ShapeGroup[];
+  elements: ShapeElement[];
+  nodeCount: number;
+  fanOutCount: number;
+  hiddenCount: number;
+  /** Shape metrics, none of which predicts what the canvas draws: they count
+   *  a shape once however many places its members occupy. The rendered figure
+   *  comes from walking `elements`. */
+  distinctShapes: number;
+  expanded: number;
+  packedOnly: number;
+  packAt: number;
+  shapeFloor: number;
+  shapeVersion: number;
+  scope: "all" | "colocated";
+  /** The connection path exposes no step content (GHL OAuth list-only). */
+  stepsUnavailable?: boolean;
+  reason?: string;
+  cycleBroken?: boolean;
 }
 
 export interface ModuleDetail {

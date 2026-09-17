@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint && node scripts/contrast-audit.mjs",
     "lint:contrast": "node scripts/contrast-audit.mjs",
-    "check:map": "node --experimental-strip-types src/lib/workflowMap/model.check.ts"
+    "check:map": "node --experimental-strip-types src/lib/workflowMap/model.check.ts && npm run --silent check:geometry:verdict",
+    "check:geometry": "${PYTHON:-python3} scripts/check-map-geometry.py",
+    "check:geometry:verdict": "python3 scripts/mapGeometryVerdict.check.py"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
@@ -20,6 +22,7 @@
     "lucide-react": "^1.31.0",
     "next": "16.1.6",
     "next-themes": "^0.4.6",
+    "posthog-js": "^1.433.6",
     "radix-ui": "^1.6.7",
     "react": "19.2.3",
     "react-dom": "19.2.3",

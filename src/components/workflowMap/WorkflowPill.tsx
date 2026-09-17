@@ -1,35 +1,35 @@
 "use client";
 
-import {
-  memo,
-  type CSSProperties,
-  type MouseEvent,
-  type PointerEvent,
-  type ReactElement,
-} from "react";
+import { memo, type CSSProperties, type ReactElement } from "react";
 import { AppPuck } from "@/components/shared/AppPuck";
-import { pillChip } from "@/lib/workflowMap/model";
+import { pillChip, pillNoun } from "@/lib/workflowMap/model";
 import { runAria, type RunState } from "@/lib/workflowMap/run";
 import { PILL_NAME_MAX_W } from "@/lib/workflowMap/tokens";
 import type { MapNode } from "@/lib/workflowMap/types";
+import { ExpandCap } from "./ExpandCap";
 import { MapTip } from "./MapTip";
-import { NodeLinkButton, OrritLinkButton } from "./NodeLinkButton";
 import type { RefCallback } from "./useMapMeasure";
 import type { TreeItemProps } from "./useMapKeyboard";
 
 /*
- * Workflow pill — a root caller or an attached workflow preview. Three
- * distinct controls, siblings inside one capsule (no nested interactives):
- *   body  (role=treeitem)  → select: sidebar + centre
- *   chip  (button)         → expand / collapse the flow ("+ 3 nodes" / "− fold")
- *   ↗     (link)           → open the workflow on its platform
+ * Workflow pill — a root caller or an attached workflow preview. Two
+ * controls, siblings inside one capsule (no nested interactives):
+ *   body    (role=treeitem) → select: sidebar + centre
+ *   end cap (button)        → show / hide the flow: "12 steps" ("modules" on
+ *                             a Make scenario) and a circle — tinted with a
+ *                             chevron while shut, filled and turned once open
+ * The links — "Open in Orrit" and the platform ↗ — live in the sidebar the
+ * body opens, never on the capsule. Three small targets side by side are
+ * three things to tell apart before every click, and what a reader reaches
+ * for on a connected workflow is its steps, so that is the one thing the
+ * capsule offers, in words.
  * The capsule element carries the measure ref (edges leave from its right
  * edge) and the tint. Connected pills wear the accent — a faint tint at rest
  * (6 % bg / 28 % border), stronger when open (7 % / 35 %) and selected
- * (55 %) — and carry a second control, "Open in Orrit". The VIEWED
- * workflow's pill (every copy of it) is the map's start state, drawn like an
- * FSM start node: solid `--text` fill, name and chip in `--bg`, and a double
- * ring (`0 0 0 2px --bg, 0 0 0 4px --text`; accent + glow when selected).
+ * (55 %). The VIEWED workflow's pill (every copy of it) is the map's start
+ * state, drawn like an FSM start node: solid `--text` fill, name and chip in
+ * `--bg`, and a double ring (`0 0 0 2px --bg, 0 0 0 4px --text`; accent +
+ * glow when selected).
  * The wrapper gets 4px of margin so the ring never clips; the capsule is
  * still the measured element, so edges attach exactly as before. It also
  * carries aria-current and an "(viewing)" aria-label suffix.
@@ -41,7 +41,6 @@ import type { TreeItemProps } from "./useMapKeyboard";
  * · failed") joins the meta line under the capsule and the aria-label; the
  * line wraps within the pill's width and never truncates.
  */
-const stop = (e: MouseEvent | PointerEvent) => e.stopPropagation();
 const baseLabel = (node: MapNode) => (node.isViewed ? `${node.name} (viewing)` : node.name);
 
 export const WorkflowPill = memo(function WorkflowPill({
@@ -76,21 +75,24 @@ export const WorkflowPill = memo(function WorkflowPill({
   const meta = [node.meta, runMeta].filter(Boolean).join(" · ");
   const tip = (el: ReactElement) => (run === "unknown" ? <MapTip label="Not checked in this run">{el}</MapTip> : el);
   const open = !!p?.open;
+  const loading = !!p?.loading;
   const full = pillChip(node);
-  /* Far mode: the name stays, the chip shrinks to a glyph, the meta hides. */
-  const chip =
-    !far || !full
-      ? full
-      : p?.cycle
-        ? "↺"
-        : p?.unavailable || p?.error
-          ? "!"
-          : p?.loading
-            ? "↻"
-            : open
-              ? "−"
-              : "+";
   const canToggle = !!p && !p.pinned && !p.cycle && !p.unavailable && !p.error;
+  const verb = open ? "Hide" : "Show";
+  /* The label is a span keyed by the STATE it reports, not its text, so the
+     motion layer's crossfade (`.wm-chip-elsewhere`) restarts exactly when the
+     open copy moves — `open in Canceled` → `open in Reschedule` — and never
+     otherwise: not when a count arrives with its summary, and not on a zoom.
+     It stays mounted in far mode (visually hidden, not removed) for the same
+     reason — remounting it would restart the fade on every crossing of
+     FAR_AT. Only the "open elsewhere" state carries the class, so a reset —
+     which a branch fold elsewhere can cause for several pills at once —
+     never animates. */
+  const chipLabel = (
+    <span key={p?.openAt ? `elsewhere:${p.openAt.id}` : "here"} className={p?.openAt ? "wm-chip-elsewhere" : undefined}>
+      {full}
+    </span>
+  );
   const viewed = !!node.isViewed;
   const tinted = open || selected;
   const borderColor = viewed
@@ -105,7 +107,6 @@ export const WorkflowPill = memo(function WorkflowPill({
     : tinted
       ? "color-mix(in srgb, var(--map-accent) 7%, var(--pill))"
       : "color-mix(in srgb, var(--map-accent) 6%, var(--pill))";
-  const chipOpen = open && canToggle && !p?.loading && !viewed;
   /* The start-state rings; selected swaps the outer ring for the accent + glow. */
   const ring = viewed
     ? selected
@@ -181,45 +182,44 @@ export const WorkflowPill = memo(function WorkflowPill({
             </span>
           </div>,
         )}
-        {chip &&
+        {full && !far && (
+          /* The seam between the capsule's two targets: left of it selects,
+             right of it opens. */
+          <span
+            aria-hidden="true"
+            className="h-5 w-px flex-none"
+            style={{
+              background: viewed
+                ? "color-mix(in srgb, var(--bg) 30%, transparent)"
+                : "color-mix(in srgb, var(--map-accent) 24%, transparent)",
+            }}
+          />
+        )}
+        {full &&
           (canToggle ? (
-            <MapTip label={open ? "Collapse" : "Expand"}>
-              <button
-                type="button"
-                aria-expanded={open}
-                aria-label={
-                  open ? `Collapse ${node.name}` : `Expand ${node.name}`
-                }
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggle(node);
-                }}
-                onPointerDown={stop}
-                className={`flex-none cursor-pointer whitespace-nowrap rounded-full border px-[7px] py-px font-mono text-[9.5px] transition-colors duration-200 ${chipOpen ? "text-map-accent-text hover:border-line-strong" : viewed ? "text-bg" : "border-line-strong text-t2 hover:border-line-strong"}`}
-                style={
-                  chipOpen
-                    ? {
-                        borderColor:
-                          "color-mix(in srgb, var(--map-accent) 40%, transparent)",
-                      }
-                    : viewed
-                      ? {
-                          borderColor:
-                            "color-mix(in srgb, var(--bg) 45%, transparent)",
-                        }
-                      : undefined
-                }
-              >
-                {chip}
-              </button>
-            </MapTip>
+            /* The end cap mirrors the app puck at the other end, and the edge
+               to the first step leaves the capsule right beside it, so an open
+               pill reads as the circle its line comes out of. */
+            <ExpandCap
+              pillToggle
+              open={open}
+              loading={loading}
+              label={chipLabel}
+              hideLabel={far}
+              ariaExpanded={open}
+              ariaLabel={
+                p?.openAt
+                  ? `Open ${node.name} here — it is currently open in ${p.openAt.where}`
+                  : `${verb} the ${pillNoun(node)} of ${node.name}`
+              }
+              tip={p?.openAt ? `Open here — it is open in ${p.openAt.where}` : `${verb} ${pillNoun(node)}`}
+              onToggle={() => onToggle(node)}
+            />
           ) : (
-            <span className="flex-none whitespace-nowrap rounded-full border border-line-strong px-[7px] py-px font-mono text-[9.5px] text-t2">
-              {chip}
+            <span className={`flex-none whitespace-nowrap text-[11px] font-medium leading-none ${viewed ? "text-bg" : "text-t2"}`}>
+              {far ? (p?.cycle ? "↺" : "!") : full}
             </span>
           ))}
-        <OrritLinkButton node={node} />
-        <NodeLinkButton node={node} />
       </div>
       {meta && !far && (
         <div

@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback, useMemo, useRef, use } from "react";
 import { useSearchParams, notFound } from "next/navigation";
 import Link from "next/link";
 import { Activity, ArrowUpRight, MessageSquare, PanelRight, X } from "lucide-react";
-import { ApiError, fetchBundles, fetchExecutions, fetchExecutionTrace, fetchComments, fetchWorkflowChanges, markWorkflowSeen, projectWorkflow } from "@/app/lib/api";
-import type { ExecutionBundles, ExecutionsResponse, ExecutionTrace, NodeId, Projection, RelatedRun, RunRow, WorkflowChanges } from "@/app/lib/api";
+import { ApiError, fetchBundles, fetchExecutions, fetchExecutionTrace, fetchComments, fetchShapes, fetchWorkflowChanges, markWorkflowSeen, projectWorkflow } from "@/app/lib/api";
+import type { ExecutionBundles, ExecutionsResponse, ExecutionTrace, NodeId, Projection, RelatedRun, RunRow, WorkflowChanges, WorkflowShapes } from "@/app/lib/api";
 import { getConnector, isProviderId } from "@/lib/connectors";
 import type { WorkflowData } from "@/lib/connectors/types";
 import { WorkflowRef } from "@/lib/portals";
@@ -120,6 +120,10 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
   const [overrides, setOverrides] = useState<Record<string, unknown>>({});
   // The step the run panel marks — the last one selected from it or elsewhere.
   const [activeStepId, setActiveStepId] = useState<string | null>(requestedStep);
+  // Repeated structure in this workflow, so the canvas can draw each pattern
+  // once. Read-side and optional: a workflow with none, an older API, or a
+  // failed read all leave the canvas folding arms on size alone.
+  const [shapes, setShapes] = useState<WorkflowShapes | null>(null);
   const [relatedTraces, setRelatedTraces] = useState<ReadonlyMap<string, ExecutionTrace>>(() => new Map());
   const relatedTried = useRef(new Set<string>());
   const onRelatedWanted = useCallback((runs: RelatedRun[]) => {
@@ -163,6 +167,21 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
     fetchExecutions(provider, id)
       .then((d) => live && setRuns(d))
       .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [provider, id, reloadKey]);
+
+  // Which branches of this workflow have the same shape, so the canvas draws
+  // each pattern once instead of four times over. Derived from the stored
+  // contract — it captures nothing and reaches no platform. A workflow with
+  // no repetition, or an API that does not answer this yet, simply leaves it
+  // null: arms still fold on their own size, nothing groups.
+  useEffect(() => {
+    let live = true;
+    fetchShapes(provider, id)
+      .then((d) => live && setShapes(d.stepsUnavailable ? null : d))
+      .catch(() => live && setShapes(null));
     return () => {
       live = false;
     };
@@ -319,6 +338,14 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
       url.searchParams.delete("node");
     }
     window.history.replaceState(window.history.state, "", url.toString());
+  }, []);
+
+  /* A link to a step this workflow no longer has used to do nothing at all.
+     Say so once, and drop the parameter so a refresh is clean. */
+  const onStepMissing = useCallback((stepId: string) => {
+    toast.error("That step is not in this workflow any more", {
+      description: `It may have been renamed or removed since the link was made (${stepId}).`,
+    });
   }, []);
 
   // `?run=` mirrors `?step=`: replaceState, never a navigation.
@@ -704,6 +731,8 @@ export default function WorkflowPage({ params }: { params: Promise<{ provider: s
         runs={runs}
         stepRequest={stepRequest}
         onStepParam={setStepParam}
+        onStepMissing={onStepMissing}
+        shapes={shapes}
         onSelectNode={onSelectNode}
         onSelectEdge={onSelectNode}
         rightSlot={rightSlot}

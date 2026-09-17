@@ -4,9 +4,11 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type MouseEvent,
   type ReactNode,
 } from "react";
 import {
@@ -20,6 +22,7 @@ import {
   type Projection,
   type RelatedRun,
   type ScenarioSummary,
+  type WorkflowShapes,
 } from "@/app/lib/api";
 import { getConnector } from "@/lib/connectors";
 import { useEscape } from "@/components/shell/shell-context";
@@ -28,11 +31,15 @@ import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useTabVisible } from "@/hooks/useTabVisible";
 import {
   ago,
+  armKey,
   buildMap,
   expandAllSnapshot,
   initialExpanded,
   keyOf,
+  packedSteps,
   parseKey,
+  revealLayer,
+  withPillOpen,
   viewedPillId,
 } from "@/lib/workflowMap/model";
 import {
@@ -55,7 +62,7 @@ import {
   ROOT_WINDOW_AT,
   SIDEBAR_W,
 } from "@/lib/workflowMap/tokens";
-import type { MapNode, WorkflowKey, WorkflowRef } from "@/lib/workflowMap/types";
+import { LAYERS, type Layer, type MapNode, type WorkflowKey, type WorkflowRef } from "@/lib/workflowMap/types";
 import { groupEdges } from "@/lib/workflowMap/edgeGroups";
 import { MapEdges } from "./MapEdges";
 import { projectionAsTrace } from "@/lib/projection/overlay";
@@ -67,6 +74,7 @@ import { MapTree, type TreeCtx } from "./MapTree";
 import { useMapCamera } from "./useMapCamera";
 import { useMapKeyboard } from "./useMapKeyboard";
 import { useMapMeasure } from "./useMapMeasure";
+import { useMapMotion } from "./useMapMotion";
 
 /*
  * WorkflowMap — the expandable cross-tool canvas for one workflow.
@@ -95,6 +103,24 @@ import { useMapMeasure } from "./useMapMeasure";
  * Scale: above LITE_AT rendered nodes the map drops drift, pulses, stagger
  * and the unfold measure loop; above ROOT_WINDOW_AT roots, far rows render
  * as fixed-height placeholders. Ambient animation pauses in a hidden tab.
+ *
+ * Legibility: the canvas is a ladder of description the reader climbs
+ * deliberately — Overview (what the workflow IS: trigger, its run-in packed,
+ * the fan-out, everything past it as one element), Structure (the default:
+ * trunk steps plus one card per distinct branch shape), Steps (all of it) —
+ * and below those, one arm opened in place, and the sidebar. Every rung is a
+ * MODEL operation: withheld steps are removed before `walk()` builds `flat`,
+ * `byId` and the DOM, so tab order, edges, LITE and the layout weights all
+ * describe what is drawn. Nothing is ever invented — a card standing for
+ * more than itself is a real node, annotated.
+ *
+ * Layer is explicit state and deliberately independent of zoom: a reader
+ * zooming out to see more must never find the map has silently changed what
+ * it shows. Descending is a click on what a card stands for; ascending is
+ * the rung control or Esc, which walks the whole ladder back up and can
+ * never dead-end. `?step=` carries no rung and no fold state — it names a
+ * step, and the map opens exactly what stands in the way, one level per
+ * rebuild, and says so when the step no longer exists at all.
  *
  * Run replay: the host passes the trace of one execution as `run`
  * (`?run=` is its URL state); `runStates` (lib/workflowMap/run.ts) gives
@@ -136,6 +162,13 @@ export interface WorkflowMapViewProps {
   onSelectNode?: (node: MapNode) => void;
   /** A connection (edge) was selected — the host drops its dock tool. */
   onSelectEdge?: () => void;
+  /** Repeated structure in the viewed workflow (`GET …/shapes`). Its element
+   *  tree is the fold plan. Null or absent: the canvas falls back to folding
+   *  arms from the graph, which is coarser but never broken. */
+  shapes?: WorkflowShapes | null;
+  /** A `?step=` (or palette / dock) request named a step this workflow no
+   *  longer has. The host says so — the map has nothing to show. */
+  onStepMissing?: (stepId: string) => void;
   /** Alternate occupant of the right slot (a dock tool, `DockHost inline`). */
   rightSlot?: ReactNode;
   /** Lowest-priority occupant: the replayed run's panel. A selected node, a
@@ -174,6 +207,7 @@ export interface WorkflowMapViewProps {
 }
 
 const TOOLS_KEY = "orrit.map.toolsHidden";
+
 const canUnfold = (n: MapNode) =>
   !!n.pill &&
   !n.pill.pinned &&
@@ -194,6 +228,8 @@ export function WorkflowMapView({
   onStepParam,
   onSelectNode,
   onSelectEdge,
+  shapes = null,
+  onStepMissing,
   rightSlot,
   runSlot,
   marks,
@@ -238,6 +274,28 @@ export function WorkflowMapView({
     () => writeStored(TOOLS_KEY, !toolsHidden),
     [toolsHidden],
   );
+  /* Which rung of the ladder is drawn. Structure is the default at every
+     size — there is no small-workflow floor under which a folding bug could
+     hide, and it is the rung the legibility measurement is of. Overview is a
+     deliberate move up, not the front door: on a drip chain with nothing
+     repeating it would pack the whole workflow behind one count. */
+  /*
+   * The rung is navigation, not a preference, and deliberately not
+   * remembered between visits: every workflow opens on its shape, and the
+   * reader opens what they choose to open.
+   *
+   * It WAS stored, and that was a real regression. Resolving a `?step=` can
+   * change the rung — that is how a link to a withheld step reveals it — and
+   * with the rung persisted, one deep link left every workflow fully
+   * expanded from then on, for that viewer, with nothing on screen
+   * explaining why. A navigation move must never quietly rewrite a
+   * preference, and the cheapest way to guarantee that is to have no
+   * preference to rewrite.
+   */
+  const [layer, setLayerState] = useState<Layer>("structure");
+  const setLayer = useCallback((l: Layer) => setLayerState(l), []);
+  const rung = LAYERS.indexOf(layer);
+
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebounced(query), FILTER_DEBOUNCE_MS);
@@ -246,6 +304,12 @@ export function WorkflowMapView({
 
   /* ---------- model ---------- */
 
+  /* Keyed the way buildMap wants it; only the viewed workflow has shapes
+     loaded, and an attached pill's steps simply do not group. */
+  const shapeMap = useMemo(
+    () => (shapes && shapes.elements.length > 0 ? new Map([[viewedKey, shapes]]) : null),
+    [shapes, viewedKey],
+  );
   const model = useMemo(
     () =>
       buildMap({
@@ -255,10 +319,12 @@ export function WorkflowMapView({
         expanded,
         query: debounced,
         now,
+        shapes: shapeMap,
+        layer,
       }),
     // store.summaries is one long-lived Map; store.version is its change signal.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [viewed, linkMap, store.summaries, store.version, expanded, debounced, now],
+    [viewed, linkMap, store.summaries, store.version, expanded, debounced, now, shapeMap, layer],
   );
 
   useEffect(() => {
@@ -312,6 +378,80 @@ export function WorkflowMapView({
      far-mode flip swaps every card for a tile (and back): the same settle
      re-anchors every edge on the new boxes and runs the dev self-check. */
   const settle = measure.settle;
+  /* The model as of this render, for callbacks that must not re-create on
+     every rebuild (the anchor search runs at click time, not render time). */
+  const modelRef = useRef(model);
+  modelRef.current = model;
+
+  /*
+   * Keep the thing the reader was looking at where it already is.
+   *
+   * A rung change rewrites the whole column — descending inserts seven cards
+   * above the one that was clicked — so in a flow layout the anchor moves
+   * even though nothing about the camera did. Correcting the scroll by that
+   * delta is not a camera move and is not animated: it is what makes the
+   * layout change fail to move what the reader is watching. Done this way
+   * rather than by panning afterwards, because a pan is a second movement
+   * the reader did not ask for, and because there is nothing to restore on
+   * the way back out — the anchor is simply still where they left it.
+   *
+   * Zoom needs no correction: `getBoundingClientRect` is already in viewport
+   * pixels, which is what `scrollLeft`/`scrollTop` are in too.
+   */
+  const anchor = useRef<{ id: string; x: number; y: number } | null>(null);
+  /** The rendered card closest to the middle of the viewport — what the
+   *  reader is looking at when they did not point at anything. */
+  const centreMost = useCallback((): string | null => {
+    const scroller = scrollNode.current;
+    if (!scroller) return null;
+    const box = scroller.getBoundingClientRect();
+    const cx = box.left + box.width / 2;
+    const cy = box.top + box.height / 2;
+    let best: string | null = null;
+    let bestD = Infinity;
+    for (const node of modelRef.current.flat) {
+      const el = elementOf(node.id);
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (r.bottom < box.top || r.top > box.bottom) continue; // not on screen
+      const d = Math.hypot(r.left + r.width / 2 - cx, r.top + r.height / 2 - cy);
+      if (d < bestD) {
+        bestD = d;
+        best = node.id;
+      }
+    }
+    return best;
+  }, [elementOf]);
+  const holdAnchor = useCallback(
+    (id: string | null | undefined) => {
+      /* No card was pointed at — a rung control, or Esc with nothing
+         selected. Hold whatever is in the middle of the screen instead, so
+         a rung change never slides the view out from under the reader. */
+      const target = id ?? centreMost();
+      const el = target ? elementOf(target) : null;
+      if (!el || !target) {
+        anchor.current = null;
+        return;
+      }
+      const r = el.getBoundingClientRect();
+      anchor.current = { id: target, x: r.left, y: r.top };
+    },
+    [elementOf, centreMost],
+  );
+  useLayoutEffect(() => {
+    const held = anchor.current;
+    anchor.current = null;
+    const scroller = scrollNode.current;
+    if (!held || !scroller) return;
+    const el = elementOf(held.id);
+    if (!el) return; // the anchor is gone from this rung; nothing to hold
+    const r = el.getBoundingClientRect();
+    const dx = r.left - held.x;
+    const dy = r.top - held.y;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+    scroller.scrollLeft += dx;
+    scroller.scrollTop += dy;
+  }, [model, elementOf]);
   useEffect(() => settle(), [zoom, far, settle]);
   const scrollRef = useCallback(
     (el: HTMLDivElement | null) => {
@@ -327,6 +467,18 @@ export function WorkflowMapView({
     },
     [measureInnerRef],
   );
+
+  /* Motion. Keyed on the viewed workflow, so the entrance plays once per
+     view change and never from a fit, settle or resize. Off under reduced
+     motion and under LITE, where the map already drops stagger and drift. */
+  const motion = useMapMotion({
+    innerElement: measure.innerElement,
+    scrollElement: measure.scrollElement,
+    viewKey: viewedKey,
+    enabled: !reduced && !lite,
+    requestMeasure: measure.schedule,
+    selectedId,
+  });
 
   /* Fresh children columns (mounted during the unfold window) get will-change. */
   const seenGroups = useRef(new Set<string>());
@@ -347,14 +499,49 @@ export function WorkflowMapView({
   const focusLater = useCallback(
     (id: string) => {
       window.clearTimeout(focusTimer.current);
-      focusTimer.current = window.setTimeout(
-        () => focusNode(id),
-        FOCUS_DELAY_MS,
-      );
+      focusTimer.current = window.setTimeout(() => {
+        /* Eased when motion is on; the measure hook's own centring is the
+           fallback, and the only path under LITE / reduced motion. Waiting
+           FOCUS_DELAY_MS (380) also keeps this aiming at the viewport the
+           sidebar leaves behind — it opens over SIDEBAR_MS (300), and
+           measuring before it has is what once flew the camera to a centre
+           computed for a viewport 322px wider than the one it landed in. */
+        if (!motion.panTo(elementOf(id))) focusNode(id);
+      }, FOCUS_DELAY_MS);
     },
-    [focusNode],
+    [focusNode, elementOf, motion],
   );
   useEffect(() => () => window.clearTimeout(focusTimer.current), []);
+
+  /*
+   * Changing rung, with its transition. The ladder's state is above; this is
+   * the only way it should be entered, because a rung change that simply
+   * re-renders reads as a screen being replaced rather than as moving into
+   * something — and, going back out, as nothing at all.
+   *
+   * `origin` is the element the reader clicked: the push scales about it and
+   * the next rung's cards arrive out of it, which is the visual thread
+   * between the two. Null aims at the viewport centre, which is right for a
+   * control that is not a card. Under reduced motion or LITE this is a
+   * straight call to `apply`, so the ladder behaves identically.
+   */
+  const goLayer = useCallback(
+    (l: Layer, origin: HTMLElement | null, anchorId?: string | null) => {
+      if (l === layer) return;
+      motion.changeLayer({
+        origin,
+        direction: LAYERS.indexOf(l) > rung ? "down" : "up",
+        apply: () => {
+          /* Hold whatever the reader was looking at — the card they clicked,
+             else their selection — so the rung grows around it instead of
+             sliding it out from under them. */
+          holdAnchor(anchorId ?? selectedId);
+          setLayer(l);
+        },
+      });
+    },
+    [motion, layer, rung, setLayer, holdAnchor, selectedId],
+  );
 
   const select = useCallback(
     (node: MapNode | null) => {
@@ -382,18 +569,147 @@ export function WorkflowMapView({
     [select, focusLater],
   );
 
-  /* Count chip: expand / collapse that flow, then centre it once unfolded. */
+  /*
+   * Open or close whatever this node holds — a pill's flow, or the arm a
+   * fold card stands for. Closing it while something inside is selected
+   * would leave the sidebar describing a card that is no longer drawn, so
+   * the card itself is re-selected first. Ids are path-based, which is what
+   * makes that one line enough; selection never rebuilds the model.
+   */
+  const setNodeOpen = useCallback(
+    (node: MapNode, open: boolean) => {
+      const key =
+        node.fold && node.stepRef ? armKey(node.stepRef.key, node.fold.armId) : node.id;
+      if (!open && selectedId != null && selectedId.startsWith(`${node.id}/`)) select(node);
+      /* A pill goes through `withPillOpen`, which keeps a workflow called
+         from several steps open at exactly one of them. Clicking a copy whose
+         chip reads "open in Canceled" is simply opening it HERE: the reader's
+         latest request wins, and the copy in Canceled then names this one. */
+      setExpanded((e) => (node.pill ? withPillOpen(e, node, open) : { ...e, [key]: open }));
+      animateUnfold();
+    },
+    [animateUnfold, select, selectedId],
+  );
+
+  /*
+   * A pill's "Show steps": the same descent an arm opening in place is — the
+   * reader asked to see what one card stands for — so it gets the same push
+   * and the same arrival, and the steps fly out of the pill they belong to.
+   * The anchor keeps the pill where it is, and there is no pan afterwards,
+   * for the reason `drillIn` gives: a second movement would carry the origin
+   * away from the steps still arriving out of it.
+   */
   const toggleNode = useCallback(
     (node: MapNode) => {
       if (!canUnfold(node)) return;
-      setExpanded((e) => ({ ...e, [node.id]: !e[node.id] }));
-      animateUnfold();
-      focusLater(node.id);
+      const open = !node.pill?.open;
+      motion.changeLayer({
+        origin: elementOf(node.id),
+        direction: open ? "down" : "up",
+        /* Hiding one workflow's steps is not a rung change: the rest of the
+           screen stays put. */
+        reannounce: false,
+        apply: () => {
+          holdAnchor(node.id);
+          setNodeOpen(node, open);
+        },
+      });
     },
-    [animateUnfold, focusLater],
+    [setNodeOpen, motion, elementOf, holdAnchor],
+  );
+
+  /*
+   * A card's chip: show me what this stands for. What that means depends on
+   * what is standing — an arm or a tile opens in place, while a card standing
+   * for a whole fan-out or the Overview's packed run is the coarse rung
+   * itself, so the only answer is to descend. One control, one meaning,
+   * three mechanics.
+   */
+  const drillIn = useCallback(
+    (node: MapNode) => {
+      if (node.pack?.inPlace && node.stepRef) {
+        /* A tile opens exactly as an arm does: the same push, its steps
+           arriving out of the card, the card held where it is and no pan.
+           It used to descend a rung, which answered "show me these two
+           steps" by unfolding the entire workflow. */
+        const open = !node.pack.open;
+        const key = armKey(node.stepRef.key, node.stepRef.stepId);
+        /* Folding it takes its steps away; a selection among them comes back
+           to the card, as it does from a folded arm. */
+        const inside = open ? [] : packedSteps(model, node);
+        motion.changeLayer({
+          origin: elementOf(node.id),
+          direction: open ? "down" : "up",
+          reannounce: false,
+          apply: () => {
+            holdAnchor(node.id);
+            if (selectedId != null && inside.some((s) => selectedId === s.id || selectedId.startsWith(`${s.id}/`))) select(node);
+            setExpanded((e) => ({ ...e, [key]: open }));
+            animateUnfold();
+          },
+        });
+        return;
+      }
+      if (node.pack || node.fold?.scope === "band") {
+        /* No `focusLater` here on purpose. The anchor already keeps this card
+           where it is, and a pan 380 ms later would take it away again —
+           two movements for one gesture, and the second one undoing the
+           property that makes the descent seamless. */
+        goLayer(LAYERS[Math.min(rung + 1, LAYERS.length - 1)], elementOf(node.id), node.id);
+        return;
+      }
+      if (!node.fold) return;
+      /* An arm opening in place is a descent too — the reader asked to see
+         what one card stands for — so it gets the same push and the same
+         arrival. Its steps then fly out of the card they came from instead
+         of doing a plain rise, which is the whole point of the origin. */
+      const open = !node.fold.open;
+      motion.changeLayer({
+        origin: elementOf(node.id),
+        direction: open ? "down" : "up",
+        /* Closing one arm among many is not a rung change: it asked for
+           something to go away, so the rest of the screen stays put. */
+        reannounce: false,
+        apply: () => {
+          holdAnchor(node.id);
+          setNodeOpen(node, open);
+        },
+      });
+    },
+    [setNodeOpen, goLayer, rung, motion, elementOf, holdAnchor, model, selectedId, select, animateUnfold],
   );
 
   const close = useCallback(() => select(null), [select]);
+
+  /*
+   * A click on the canvas itself closes what the reader has open — the mouse
+   * equivalent of the first `Esc`, and nothing more: it closes the panel and
+   * clears the node or connection selection, and never folds a card or
+   * changes the rung.
+   *
+   * "The canvas itself" is decided by the event TARGET, not by what is under
+   * the pointer, and it is a whitelist: the viewport, its slack pad, and the
+   * zoomed content box. Everything a reader can act on — cards, chips, fold
+   * controls, pills, edge hit-paths — is a pointer-events:auto descendant, so
+   * a click on one targets it and never these three. The tree's layout
+   * wrappers and the edge layer are pointer-events:none, so a click through
+   * them lands on the content box, which is exactly the surface. The
+   * toolbar, minimap and sidebar sit outside the viewport altogether.
+   *
+   * The click that ends a pan never arrives here: the camera's
+   * `onClickCapture` swallows it and stops propagation before bubbling, so
+   * dragging to look around cannot close what is open.
+   */
+  const closeOnCanvas = useCallback(
+    (e: MouseEvent<HTMLDivElement>) => {
+      if (selectedId == null && selectedEdge == null) return;
+      const t = e.target;
+      const inner = innerNode.current;
+      if (t !== e.currentTarget && t !== inner && t !== inner?.parentElement) return;
+      close();
+    },
+    [selectedId, selectedEdge, close],
+  );
 
   /* Sidebar "Show" on a Go to step: select + centre the jump target. */
   const showStep = useCallback(
@@ -514,6 +830,49 @@ export function WorkflowMapView({
     () => onClearRun?.(),
   );
 
+  /*
+   * Esc climbs the ladder back up, under everything else: panel, then
+   * replay, then whatever was opened in place, then the rung itself.
+   * Closing the panel stays the first thing Esc does — that is what it has
+   * always done, and what a reader expects of an open panel — but Esc is
+   * never swallowed, so no way down is ever without a way back.
+   *
+   * "Opened in place" is one rung, not three: a press puts the rung back to
+   * how it draws itself, arms folded and members grouped, rather than
+   * undoing clicks one at a time. Pill expansion is keyed by node id and is
+   * a different axis, so it is untouched.
+   */
+  const drilledIn = useMemo(
+    () => Object.entries(expanded).some(([k, v]) => v && k.startsWith("arm:")),
+    [expanded],
+  );
+  const canAscend = drilledIn || rung > 0;
+  const ascend = useCallback(() => {
+    if (drilledIn) {
+      /* Collapsing what was opened in place removes cards and adds none, so
+         without the transition there is nothing left to animate and the way
+         back is a snap. The pull re-announces the rung being returned to. */
+      motion.changeLayer({
+        origin: null,
+        direction: "up",
+        reannounce: false,
+        apply: () => {
+          holdAnchor(selectedId);
+          setExpanded((e) =>
+            Object.fromEntries(Object.entries(e).filter(([k, v]) => !(v && k.startsWith("arm:")))),
+          );
+          animateUnfold();
+        },
+      });
+      return;
+    }
+    goLayer(LAYERS[Math.max(0, rung - 1)], null);
+  }, [drilledIn, animateUnfold, goLayer, rung, motion, holdAnchor, selectedId]);
+  useEscape(
+    canAscend && selectedId == null && selectedEdge == null && !hasTool && !runActive,
+    ascend,
+  );
+
   const expandAll = useCallback(() => {
     setExpanded((e) => expandAllSnapshot(model, e));
     animateUnfold();
@@ -525,20 +884,10 @@ export function WorkflowMapView({
     animateUnfold();
   }, [select, animateUnfold]);
 
-  const onExpand = useCallback(
-    (n: MapNode) => {
-      setExpanded((e) => ({ ...e, [n.id]: true }));
-      animateUnfold();
-    },
-    [animateUnfold],
-  );
-  const onCollapse = useCallback(
-    (n: MapNode) => {
-      setExpanded((e) => ({ ...e, [n.id]: false }));
-      animateUnfold();
-    },
-    [animateUnfold],
-  );
+  /* A tile opens in place through its own chip's path, which keys it by its
+     step rather than by node id. */
+  const onExpand = useCallback((n: MapNode) => (n.pack?.inPlace ? drillIn(n) : setNodeOpen(n, true)), [setNodeOpen, drillIn]);
+  const onCollapse = useCallback((n: MapNode) => (n.pack?.inPlace ? drillIn(n) : setNodeOpen(n, false)), [setNodeOpen, drillIn]);
 
   const keyboard = useMapKeyboard({
     model,
@@ -561,19 +910,59 @@ export function WorkflowMapView({
     setExpanded((e) => ({ ...e, ...initialExpanded(linkMap, viewed) }));
   }, [stepRequest, linkMap, viewed]);
 
+  /*
+   * A link names a step, never a view state — so opening one expands exactly
+   * what stands between the map and that step, one level per rebuild, and
+   * nothing else. `hiddenSteps` says which card holds it; opening that card
+   * re-runs this effect, which converges because every hop draws strictly
+   * more. When nothing renders it and nothing can, the step is gone: the
+   * request is dropped and the host is told, rather than the link silently
+   * doing nothing — the one gap this inherited and does not keep.
+   */
   useEffect(() => {
     if (pendingStep == null) return;
-    const node = model.byStep.get(`${viewedKey}:${pendingStep}`);
+    const stepKey = `${viewedKey}:${pendingStep}`;
+    const node = model.byStep.get(stepKey);
     if (node) {
       setPendingStep(null);
       select(node);
       focusLater(node.id);
       return;
     }
+    const holding = model.hiddenSteps.get(stepKey);
+    if (holding) {
+      /* Something stands in the way: reveal it and let this run again. A
+         coarse rung is revealed by descending, a card by opening it — the
+         link itself carries neither, it only ever names the step. A step the
+         map knows it is holding is never reported missing. */
+      const rungWanted = revealLayer(holding);
+      if (rungWanted) setLayer(rungWanted);
+      else if (!expanded[holding]) setExpanded((e) => ({ ...e, [holding]: true }));
+      return;
+    }
     const pid = viewedPillId(model, viewed);
-    if (pid && !expanded[pid] && canUnfold(model.byId.get(pid)!))
+    if (pid && !expanded[pid] && canUnfold(model.byId.get(pid)!)) {
       setExpanded((e) => ({ ...e, [pid]: true }));
-  }, [model, pendingStep, viewedKey, viewed, expanded, select, focusLater]);
+      return;
+    }
+    /* The viewed workflow's steps are loaded and none of them is this one. */
+    if (store.summaries.get(viewedKey)?.state !== "ok") return;
+    setPendingStep(null);
+    onStepParam?.(null);
+    onStepMissing?.(pendingStep);
+  }, [
+    model,
+    pendingStep,
+    viewedKey,
+    viewed,
+    expanded,
+    select,
+    focusLater,
+    store.summaries,
+    onStepParam,
+    onStepMissing,
+    setLayer,
+  ]);
 
   /* ---------- selected node + its detail ---------- */
 
@@ -801,7 +1190,6 @@ export function WorkflowMapView({
     selectedId,
     pairRoleOf,
     pairTick,
-    lite,
     unfolding: measure.unfolding,
     itemProps: keyboard.itemProps,
     refFor: measure.refFor,
@@ -813,6 +1201,7 @@ export function WorkflowMapView({
     heightOf: measure.heightOf,
     onClick: clickNode,
     onToggle: toggleNode,
+    onDrillIn: drillIn,
     srNoteFor: marks ? noteFor : undefined,
     isFreshGroup,
     // A projection lights the canvas through the same overlay as a recorded
@@ -855,6 +1244,7 @@ export function WorkflowMapView({
               onPointerCancel={camera.onPointerAbort}
               onLostPointerCapture={camera.onPointerAbort}
               onClickCapture={camera.onClickCapture}
+              onClick={closeOnCanvas}
               className={`absolute inset-0 overflow-auto outline-none ${camera.dragging ? "cursor-grabbing select-none" : "cursor-grab"}`}
             >
               {/* Slack pad: one viewport of padding on every side (set by the
@@ -874,6 +1264,7 @@ export function WorkflowMapView({
                     selectedGroup={selectedGroup?.key ?? null}
                     focusedEdge={focusedPair?.edgeKey ?? null}
                     onSelectEdge={selectEdge}
+                    onGeometry={measure.onGeometry}
                     track={measure.unfolding || lite || reduced}
                     lite={lite}
                     paused={!visible}
@@ -902,6 +1293,9 @@ export function WorkflowMapView({
               onQuery={setQuery}
               onExpandAll={expandAll}
               onCollapseAll={collapseAll}
+              layer={layer}
+              onLayer={(l) => goLayer(l, null)}
+              withheld={model.counts.withheld}
               zoom={zoom}
               onZoomIn={camera.zoomIn}
               onZoomOut={camera.zoomOut}

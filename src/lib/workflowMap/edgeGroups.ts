@@ -64,7 +64,7 @@ export const connectionKindLabel = (k: ConnectionKind) => KIND_LABEL[k];
 function singleKind(e: MapEdge, to: MapNode | undefined): ConnectionKind {
   if (e.kind === "join") return "join";
   if (e.kind === "jump") return "go to";
-  if (e.anchor === "v") return "sequence";
+  if (e.anchor === "h" || e.anchor === "v") return "sequence";
   if (to?.pill) return "calls";
   if (to?.kind === "route") return "branch";
   return "sequence";
