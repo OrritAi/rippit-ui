@@ -19,7 +19,7 @@ export function PortalHeader({
     <header className="flex h-[52px] flex-none items-center gap-3.5 border-b border-line bg-bg px-4">
       <div className="flex min-w-0 items-center gap-2.5">
         <LogoMark size={15} />
-        <span className="text-[15px] font-extrabold tracking-[-0.02em]">rippit</span>
+        <span className="text-[15px] font-extrabold tracking-[-0.02em]">orrit</span>
         <span className="font-mono text-[11px] text-t3">{crumb}</span>
         {badge}
       </div>

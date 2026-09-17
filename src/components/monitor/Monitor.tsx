@@ -403,7 +403,7 @@ export function Monitor({
         aria-label="Live workflow monitor"
         className="relative overflow-hidden"
       >
-        <h1 className="sr-only">Rippit Monitor — Lead Capture → Nurture</h1>
+        <h1 className="sr-only">Orrit Monitor — Lead Capture → Nurture</h1>
         {/* ---------- canvas ---------- */}
         <div
           ref={vp}

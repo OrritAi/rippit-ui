@@ -1,4 +1,5 @@
-import type { ExecutionPayload, ExecutionTrace, LinkMap, ModuleInfo, Projection, ScenarioSummary, WorkflowCard, WorkflowLink } from "@/app/lib/api";
+import type { Connection, ExecutionPayload, ExecutionTrace, LinkMap, ModuleInfo, Projection, ScenarioSummary, WorkflowCard, WorkflowLink, WorkflowShapes } from "@/app/lib/api";
+import { COLLAPSE_SHAPES as CAPTURED_SHAPES } from "./collapseShapes.ts";
 import type { SummaryEntry, WorkflowKey, WorkflowRef } from "../types";
 
 /*
@@ -310,13 +311,13 @@ export const PROTOTYPE_PROJECTION: Projection = {
         operands: [{ operator: "number:gte", left: 400, right: "1000", verdict: false }],
       },
     },
-    { nodeId: "5", state: "unknown", gate: { evaluated: null, label: null, reason: "depends on the output of step 4, which Rippit cannot compute", operands: [], blockedBy: "4" } },
+    { nodeId: "5", state: "unknown", gate: { evaluated: null, label: null, reason: "depends on the output of step 4, which Orrit cannot compute", operands: [], blockedBy: "4" } },
     { nodeId: "6", state: "untouched", gate: null },
   ],
   fields: {},
   frames: {},
   partial: true,
-  notes: ["Projected by Rippit — no run happened."],
+  notes: ["Projected by Orrit — no run happened."],
   projection: {
     source: "typed",
     inputHash: null,
@@ -382,7 +383,7 @@ export const PROTOTYPE_PAYLOAD: ExecutionPayload = {
   },
   bytes: 212,
   truncated: false,
-  note: "Fetched from Make just now and shown once — Rippit does not store run data.",
+  note: "Fetched from Make just now and shown once — Orrit does not store run data.",
 };
 
 /** `n` callers cloned from the four roots — exercises LITE and root windowing. */
@@ -425,3 +426,204 @@ export function tall(n: number): PrototypeFixture {
   };
   return assemble(ROOTS, scenario);
 }
+
+/* ── COLLAPSE — the 119-step GoHighLevel workflow ─────────────────────
+   The workflow the whole legibility measurement is built from
+   ("PCF Submitted → Update Data Compiler - Slack"): a ten-step run into a
+   nine-outcome router, where four arms are byte-identical, two more match
+   each other, and three are singletons. Modelled, not captured — the step
+   counts, arm shapes and branch labels are the measured ones, so the fold
+   and group behaviour can be asserted without a database.
+
+     10 steps  survey submitted → … → enrol → router
+     ×4 · 12   No-Showed | Canceled | Reschedule | Payment = No
+     ×2 · 10   Passed to Setter | Fake or Duplicate
+        36     Payment = Yes
+         4     Paste-Values Only Placeholder
+         1     None                                        = 119 steps
+
+   The ×4 arm carries a nested two-way branch, so opening its card leaves
+   two folded arms inside it — the "one level per rebuild" path a `?step=`
+   deep link into a collapsed arm has to walk. */
+
+const ghlStep = (id: string, module: string, label: string, ordinal: string, kind = "action"): ModuleInfo =>
+  step(id, "ghl", module, "", { kind, ordinal, source: "ghl", label } as Partial<ModuleInfo>);
+
+/** A linear run of `n` steps under `prefix`, cycling a module vocabulary. */
+function runOf(prefix: string, n: number, vocab: [string, string][], from: string, ordinal: string, offset = 0): { modules: ModuleInfo[]; connections: Connection[]; last: string } {
+  const modules: ModuleInfo[] = [];
+  const connections: Connection[] = [];
+  let prev = from;
+  for (let i = 0; i < n; i++) {
+    const [module, label] = vocab[(i + offset) % vocab.length];
+    const id = `${prefix}${i + 1}`;
+    modules.push(ghlStep(id, module, `${label}${vocab.length > 1 || n === 1 ? "" : ` ${i + 1}`}`, `${ordinal}.${i + 1}`));
+    connections.push({ from: prev, to: id, kind: i === 0 ? "branch" : "sequence" });
+    prev = id;
+  }
+  return { modules, connections, last: prev };
+}
+
+/** Label, step count, and where in the vocabulary the arm starts. Two arms
+ *  with the same size AND the same offset are byte-identical, which is how
+ *  the measured [4, 2, 1, 1, 1] shape distribution is reproduced — the
+ *  signature reads topology and target token, so nothing but a genuinely
+ *  identical sequence groups. */
+const OUTCOMES: [string, number, number][] = [
+  ["No-Showed", 12, 0],
+  ["Canceled", 12, 0],
+  ["Reschedule", 12, 0],
+  ["Payment = No", 12, 0],
+  ["Passed to Setter", 10, 1],
+  ["Fake or Duplicate", 10, 1],
+  ["Payment = Yes", 36, 2],
+  ["Paste-Values Only Placeholder", 4, 3],
+  ["None", 1, 4],
+];
+
+const SHAPED_VOCAB: [string, string][] = [
+  ["google_sheets", "Append row → PCF sheet"],
+  ["webhook", "POST to Data Compiler"],
+  ["slack_message", "Post to #closers"],
+  ["add_notes", "Note the outcome"],
+  ["update_contact_field", "Stamp the outcome"],
+  ["wait", "Wait 5 minutes"],
+];
+
+function collapseSummary(): ScenarioSummary {
+  const modules: ModuleInfo[] = [
+    ghlStep("p1", "survey_submitted", "Survey submitted", "", "trigger"),
+    ghlStep("p2", "clear_fields", "Clear PCF fields", "1"),
+    ghlStep("p3", "wait", "Wait 1 minute", "2"),
+    ghlStep("p4", "update_contact_field", "Stamp submitted_at", "3"),
+    ghlStep("p5", "google_sheets", "Look up closer Slack ID", "4"),
+    ghlStep("p6", "google_sheets", "Look up setter Slack ID", "5"),
+    ghlStep("p7", "update_contact_field", "Update contact fields", "6"),
+    ghlStep("p8", "wait", "Wait 30 seconds", "7"),
+    ghlStep("p9", "add_contact_tag", "Enrol in Data Compiler", "8"),
+    ghlStep("p10", "if_else", "Appointment outcome?", "9", "router"),
+  ];
+  const connections: Connection[] = [];
+  for (let i = 0; i < 9; i++) connections.push({ from: `p${i + 1}`, to: `p${i + 2}`, kind: "sequence" });
+
+  OUTCOMES.forEach(([label, size, offset], arm) => {
+    const letter = String.fromCharCode(65 + arm);
+    const ord = `9.${letter}`;
+    if (size === 12) {
+      /* head → webhook → nested two-way branch (6 steps / 3 steps). */
+      modules.push(
+        ghlStep(`${letter}1`, "google_sheets", "Append row → PCF sheet", `${ord}.1`),
+        ghlStep(`${letter}2`, "webhook", "POST to Data Compiler", `${ord}.2`),
+        ghlStep(`${letter}3`, "if_else", "Setter assigned?", `${ord}.3`, "router"),
+      );
+      connections.push(
+        { from: "p10", to: `${letter}1`, kind: "branch", label },
+        { from: `${letter}1`, to: `${letter}2`, kind: "sequence" },
+        { from: `${letter}2`, to: `${letter}3`, kind: "sequence" },
+      );
+      const yes = runOf(`${letter}y`, 6, SHAPED_VOCAB.slice(2), `${letter}3`, `${ord}.3.A`);
+      const no = runOf(`${letter}n`, 3, SHAPED_VOCAB.slice(2), `${letter}3`, `${ord}.3.B`);
+      yes.connections[0].label = "yes";
+      no.connections[0].label = "no";
+      modules.push(...yes.modules, ...no.modules);
+      connections.push(...yes.connections, ...no.connections);
+      return;
+    }
+    const run = runOf(letter.toLowerCase(), size, SHAPED_VOCAB, "p10", ord, offset);
+    run.connections[0].label = label;
+    modules.push(...run.modules);
+    connections.push(...run.connections);
+  });
+
+  return {
+    name: "PCF Submitted → Update Data Compiler - Slack",
+    totalModules: modules.length,
+    appsUsed: ["ghl"],
+    modules,
+    connections,
+    nativeUrl: "https://app.gohighlevel.com/v2/location/loc1/automation/workflows/pcf-119",
+    issues: [],
+  };
+}
+
+export const COLLAPSE_SUMMARY: ScenarioSummary = collapseSummary();
+export const COLLAPSE_VIEWED: WorkflowRef = { source: "ghl", refId: "pcf-119" };
+
+/** The captured `GET …/shapes?scope=colocated` response for it — the real
+ *  algorithm's answer, in `fixtures/collapseShapes.ts`, not a hand-written
+ *  guess. Nine head tiles and five arms: 119 steps as 14 elements. */
+export { COLLAPSE_SHAPES } from "./collapseShapes.ts";
+
+/** The workflow on its own — no callers, no cross-platform links, so the
+ *  canvas is exactly the fold behaviour and nothing else. */
+export const COLLAPSE: PrototypeFixture = {
+  viewed: COLLAPSE_VIEWED,
+  linkMap: {
+    workflows: [ghlCard("pcf-119", COLLAPSE_SUMMARY.name, COLLAPSE_SUMMARY.modules.length, 2 * H)],
+    links: [],
+    unmatched: [],
+    assetLinks: [],
+    stats: { workflows: 1, links: 0, deadLinks: 0 },
+  },
+  summaries: new Map<WorkflowKey, SummaryEntry>([["ghl:pcf-119", { state: "ok", summary: COLLAPSE_SUMMARY }]]),
+};
+
+/** Keyed the way `buildMap` wants it. */
+export const COLLAPSE_SHAPE_MAP: ReadonlyMap<WorkflowKey, WorkflowShapes> = new Map([["ghl:pcf-119" as WorkflowKey, CAPTURED_SHAPES]]);
+
+/* ── COLLAPSE_LINKED — the same workflow, calling out from its branches ──
+   The shape the founder hit on live data: the webhooks that call another
+   platform sit INSIDE router arms, and several arms call the SAME scenario.
+   On the real workflow five arms call one Make scenario and two call
+   another; the canvas used to draw one pill per scenario, for whichever
+   calling arm happened to be rendered first, so a connection appeared and
+   vanished depending on whether an unrelated branch was open.
+
+   So this fixture has several call sites per target, and every kind of place
+   a call can come from:
+     A2 B2 C2 D2 → make:912   four arms, one scenario (mid-arm webhooks)
+     e1 f1       → make:913   two arm HEADS — the step a folded card stands for
+     g5          → make:915   a subflow from deep inside a long arm
+     p9          → make:916   the trunk, which is always drawn
+     (missing)   → make:914   a step this workflow does not have
+   Fully open that is nine pills. Fully folded it is two: the trunk's, and the
+   one that genuinely has no calling step to hang beside. */
+
+const linkedCard = (refId: string, name: string): WorkflowCard =>
+  makeCard(refId, name, 2, 2 * H);
+
+const callFrom = (stepId: string, stepName: string, refId: string, kind: "webhook-call" | "subflow" = "webhook-call"): WorkflowLink => ({
+  from: { source: "ghl", refId: "pcf-119", stepId, stepName },
+  to: { source: "make", refId },
+  kind,
+  status: "ok",
+});
+
+export const COLLAPSE_LINKED: PrototypeFixture = {
+  viewed: COLLAPSE_VIEWED,
+  linkMap: {
+    workflows: [
+      ghlCard("pcf-119", COLLAPSE_SUMMARY.name, COLLAPSE_SUMMARY.modules.length, 2 * H),
+      linkedCard("912", "CP - pcf_data - Clear GHL Fields"),
+      linkedCard("913", "CP - pcf_data - Clear GHL Fields - Unsuccessful Calls"),
+      linkedCard("914", "CP - pcf_data - Orphan"),
+      linkedCard("915", "CP - pcf_data - Payment Received"),
+      linkedCard("916", "PCF Submitted - update Pipeline"),
+    ],
+    links: [
+      callFrom("A2", "POST to Data Compiler", "912"),
+      callFrom("B2", "POST to Data Compiler", "912"),
+      callFrom("C2", "POST to Data Compiler", "912"),
+      callFrom("D2", "POST to Data Compiler", "912"),
+      callFrom("e1", "POST to Data Compiler", "913"),
+      callFrom("f1", "POST to Data Compiler", "913"),
+      callFrom("g5", "Post to #closers", "915", "subflow"),
+      callFrom("p9", "Enrol in Data Compiler", "916", "subflow"),
+      callFrom("deleted-step", "Gone", "914"),
+    ],
+    unmatched: [],
+    assetLinks: [],
+    stats: { workflows: 6, links: 9, deadLinks: 0 },
+  },
+  summaries: new Map<WorkflowKey, SummaryEntry>([["ghl:pcf-119", { state: "ok", summary: COLLAPSE_SUMMARY }]]),
+};

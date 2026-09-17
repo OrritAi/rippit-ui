@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 
 /*
  * Browser Supabase client — auth only. All protected data flows through the
- * Rippit API with a Bearer token; the UI never reads app tables directly, so
+ * Orrit API with a Bearer token; the UI never reads app tables directly, so
  * the SPA pattern (no @supabase/ssr, no middleware) is the right fit.
  */
 /* Fallbacks keep module evaluation safe during build/prerender (no env) and

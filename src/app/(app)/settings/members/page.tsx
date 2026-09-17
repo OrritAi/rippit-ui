@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import posthog from "posthog-js";
 import { toast } from "sonner";
 import { removeMember, transferOwnership, updateMemberRole, WorkspaceMember } from "@/app/lib/api";
 import { useAuth } from "@/components/app/AuthProvider";
@@ -28,6 +29,7 @@ export default function MembersPage() {
   const setRole = async (m: WorkspaceMember, next: "admin" | "member") => {
     try {
       await updateMemberRole(workspaceId, m.user_id, next);
+      posthog.capture("workspace_member_role_updated", { role: next });
       toast.success(`${memberName(m)} is now ${roleNoun(next)}`);
       reload();
     } catch (err) {
@@ -38,6 +40,7 @@ export default function MembersPage() {
   const transfer = async (m: WorkspaceMember) => {
     try {
       await transferOwnership(workspaceId, m.user_id);
+      posthog.capture("workspace_ownership_transferred");
       toast.success(`Ownership transferred to ${memberName(m)} — you are now an admin`);
       refresh();
       reload();
@@ -49,6 +52,7 @@ export default function MembersPage() {
   const remove = async (m: WorkspaceMember) => {
     try {
       await removeMember(workspaceId, m.user_id);
+      posthog.capture("workspace_member_removed", { removal_method: "single" });
       toast.success(`${memberName(m)} removed from the organization`);
       setSelected((s) => {
         const n = new Set(s);
@@ -69,7 +73,10 @@ export default function MembersPage() {
     setConfirmBulk(false);
     const failed = results.filter((r) => r.status === "rejected");
     const done = ids.length - failed.length;
-    if (done > 0) toast.success(`${done} member${done === 1 ? "" : "s"} removed from the organization`);
+    if (done > 0) {
+      posthog.capture("workspace_member_removed", { removal_method: "bulk", removed_count: done });
+      toast.success(`${done} member${done === 1 ? "" : "s"} removed from the organization`);
+    }
     if (failed.length) {
       const first = failed[0] as PromiseRejectedResult;
       toast.error(errorText(first.reason, `${failed.length} couldn’t be removed`));

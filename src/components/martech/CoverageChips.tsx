@@ -4,7 +4,7 @@ import { CircleCheck, CircleDashed, CircleSlash } from "lucide-react";
 import type { CoverageState } from "@/app/lib/api";
 
 /*
- * Coverage chips — one per facet, stating what Rippit has for this funnel.
+ * Coverage chips — one per facet, stating what Orrit has for this funnel.
  * The reason sits in the tooltip. `compact` drops the card frame for a
  * view bar or a list card; the labels stay so the state is never a bare icon.
  */

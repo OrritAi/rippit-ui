@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import posthog from "posthog-js";
 import { toast } from "sonner";
 import { inviteMember, Role } from "@/app/lib/api";
 import { Card } from "@/components/shared/Card";
@@ -25,6 +26,7 @@ export function InviteCard({ workspaceId, viewerRole, onSent }: { workspaceId: s
     setBusy(true);
     try {
       const inv = await inviteMember(workspaceId, value, role);
+      posthog.capture("workspace_member_invited", { role, delivery_status: inv?.sendError ? "failed" : "sent" });
       if (inv?.sendError) toast.success(`Invite saved — email not delivered · ${value} still joins on first sign-in`);
       else toast.success(`Invite sent — ${value} joins on first sign-in`);
       setEmail("");

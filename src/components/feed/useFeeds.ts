@@ -15,10 +15,10 @@ export function useNotifications() {
       .then((d) => live && setData(d))
       .catch((e: Error) => live && setError(e.message));
     const on = () => setGen((g) => g + 1);
-    window.addEventListener("rippit:notifications", on);
+    window.addEventListener("orrit:notifications", on);
     return () => {
       live = false;
-      window.removeEventListener("rippit:notifications", on);
+      window.removeEventListener("orrit:notifications", on);
     };
   }, [gen]);
   const reload = useCallback(() => setGen((g) => g + 1), []);
@@ -35,10 +35,10 @@ export function useMentions() {
       .then((d) => live && setData(d))
       .catch((e: Error) => live && setError(e.message));
     const on = () => setGen((g) => g + 1);
-    window.addEventListener("rippit:comments", on);
+    window.addEventListener("orrit:comments", on);
     return () => {
       live = false;
-      window.removeEventListener("rippit:comments", on);
+      window.removeEventListener("orrit:comments", on);
     };
   }, [gen]);
   const reload = useCallback(() => setGen((g) => g + 1), []);

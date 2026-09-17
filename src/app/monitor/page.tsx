@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Monitor } from "@/components/monitor/Monitor";
 
 export const metadata: Metadata = {
-  title: "Rippit Monitor",
+  title: "Orrit Monitor",
 };
 
 /*

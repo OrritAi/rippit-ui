@@ -27,7 +27,7 @@ export const ghlConnector: ConnectorDescriptor = {
     instructions: [
       "Drag the button below to your bookmarks bar.",
       "Open GoHighLevel in another tab and sign in.",
-      "Click the Rippit bookmark — you’ll land back here.",
+      "Click the Orrit bookmark — you’ll land back here.",
       "Choose which sub-accounts to connect.",
     ],
   },

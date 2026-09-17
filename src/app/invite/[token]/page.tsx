@@ -66,7 +66,7 @@ export default function InvitePage() {
   const [signInFirst, setSignInFirst] = useState(false);
 
   useEffect(() => {
-    document.title = "Invitation — Rippit";
+    document.title = "Invitation — Orrit";
     let live = true;
     fetchInviteByToken(token)
       .then((inv) => live && setInvite(inv))
@@ -81,7 +81,7 @@ export default function InvitePage() {
   }, [token]);
 
   const organization = invite?.organizationName;
-  // An invitation to Rippit itself names no organization.
+  // An invitation to Orrit itself names no organization.
   const isPlatform = !organization;
   const next = encodeURIComponent(`/invite/${token}`);
   const hasAccount = signInFirst || invite?.accountExists === true;
@@ -127,7 +127,7 @@ export default function InvitePage() {
       const code = errorCode(err);
       if (code === "account_exists") {
         setSignInFirst(true);
-        setNotice("You already have a Rippit account for this address. Sign in to accept.");
+        setNotice("You already have a Orrit account for this address. Sign in to accept.");
       } else if (code && GONE[code]) {
         setGone(GONE[code]);
       } else {
@@ -167,7 +167,7 @@ export default function InvitePage() {
 
   const heading = invite
     ? isPlatform
-      ? "You’re invited to Rippit"
+      ? "You’re invited to Orrit"
       : invite.inviterName
         ? `${invite.inviterName} invited you to`
         : "You’re invited to"
@@ -192,7 +192,7 @@ export default function InvitePage() {
       <div className="relative w-full max-w-[400px]" style={{ animation: "riseIn .55s var(--ease-out) both" }}>
         <div className="mb-7 flex items-center justify-center gap-2.5">
           <LogoMark size={18} />
-          <span className="text-[17px] font-extrabold tracking-[-0.02em]">rippit</span>
+          <span className="text-[17px] font-extrabold tracking-[-0.02em]">orrit</span>
         </div>
 
         <div className="rounded-card border border-line bg-panel shadow-[var(--shadow-float)] backdrop-blur-[14px]">
@@ -202,7 +202,7 @@ export default function InvitePage() {
                 {gone}
               </p>
               <Button type="button" variant="outline" onClick={() => router.push("/login")} className={`${primaryButton} border-line-strong bg-transparent hover:bg-hover dark:bg-transparent dark:hover:bg-hover`}>
-                Go to Rippit
+                Go to Orrit
               </Button>
             </div>
           ) : !invite ? (
@@ -339,7 +339,7 @@ export default function InvitePage() {
         </div>
 
         <p className="mx-auto mt-6 max-w-[320px] text-center text-[11.5px] leading-relaxed text-t3">
-          Rippit is a read-only map of your Make and GoHighLevel automations. It never edits or triggers anything.
+          Orrit is a read-only map of your Make and GoHighLevel automations. It never edits or triggers anything.
         </p>
       </div>
     </main>

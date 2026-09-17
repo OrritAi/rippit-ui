@@ -11,7 +11,7 @@ import { EmptyRow, RowCard, ViewBar, ViewBody, ViewTitle } from "@/components/vi
 import { CONNECTORS } from "@/lib/connectors";
 
 /*
- * Assets registry — every external asset Rippit indexed (sheets, webhooks,
+ * Assets registry — every external asset Orrit indexed (sheets, webhooks,
  * pipelines, tags, templates…) with uses across all workflows. Webhooks and
  * endpoints are stored hashed: they list, they trace, they never expose the
  * raw URL and never get an "open" link.
@@ -24,7 +24,7 @@ export default function AssetsPage() {
   const [kind, setKind] = useState<string | null>(null);
 
   useEffect(() => {
-    document.title = "Assets — Rippit";
+    document.title = "Assets — Orrit";
   }, []);
   useEffect(() => {
     if (connections.length === 0) return;
@@ -78,7 +78,7 @@ export default function AssetsPage() {
               <Link href="/settings/connections" className="not-italic font-semibold text-t1 underline-offset-4 hover:underline">
                 Connect a platform
               </Link>{" "}
-              and Rippit indexes every sheet, webhook, pipeline and tag your workflows touch.
+              and Orrit indexes every sheet, webhook, pipeline and tag your workflows touch.
             </EmptyRow>
           </RowCard>
         ) : !data && !error ? (

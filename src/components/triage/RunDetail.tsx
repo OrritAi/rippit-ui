@@ -311,7 +311,7 @@ function PayloadSection({ row, platform, state }: { row: RunRow; platform: strin
           )}
           <JsonBlock data={data} />
           {payload.truncated && <p className="m-0 font-mono text-[10.5px] text-t3">Cut at {payload.bytes != null ? `${payload.bytes} bytes` : "the size cap"}</p>}
-          {/* The one note that stays prose: what Rippit does with this. */}
+          {/* The one note that stays prose: what Orrit does with this. */}
           <p className="m-0 font-mono text-[10.5px] leading-[1.5] text-t3 [overflow-wrap:anywhere]">{payload.note ?? `From ${platform} · shown once, never stored`}</p>
         </div>
       )}

@@ -20,7 +20,7 @@ const ITEMS: Item[] = [
   {
     swatch: <span className="h-6 w-8 rounded-[4px] border border-dashed border-line-strong" />,
     label: "Not captured",
-    hint: "Rippit has nothing for this yet — not a fault in the estate",
+    hint: "Orrit has nothing for this yet — not a fault in the estate",
   },
   {
     swatch: <span className="h-[2px] w-6 rounded" style={{ background: "var(--edge)" }} />,
@@ -47,7 +47,7 @@ const ITEMS: Item[] = [
   {
     swatch: <span className="h-0 w-6 border-t-2 border-dashed opacity-70" style={{ borderColor: "var(--t3)" }} />,
     label: "Inferred / not captured link",
-    hint: "Traffic source or a step order Rippit could not confirm",
+    hint: "Traffic source or a step order Orrit could not confirm",
   },
   {
     swatch: <span className="rounded-full border px-1.5 py-[1px] text-[9px] font-semibold" style={{ color: "var(--err-text)", borderColor: "color-mix(in srgb, var(--err) 40%, transparent)" }}>! stale</span>,
@@ -90,7 +90,7 @@ export function MartechLegend({ className = "" }: { className?: string }) {
             ))}
           </ul>
           <p className="mt-2 border-t border-line2 pt-2 text-[10.5px] text-t3">
-            Everything here is configuration Rippit read. Nothing shows whether a step ran.
+            Everything here is configuration Orrit read. Nothing shows whether a step ran.
           </p>
         </div>
       )}

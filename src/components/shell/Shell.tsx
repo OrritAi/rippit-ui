@@ -39,7 +39,7 @@ function useMediaQuery(q: string): boolean {
   return m;
 }
 
-const PANEL_WIDTH_KEY = "rippit.panelWidth";
+const PANEL_WIDTH_KEY = "orrit.panelWidth";
 const PANEL_DEFAULT = 206;
 const PANEL_MIN = 180;
 const PANEL_MAX = 560;

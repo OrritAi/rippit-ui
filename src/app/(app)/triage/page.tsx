@@ -103,7 +103,7 @@ export default function TriagePage() {
   );
 
   useEffect(() => {
-    document.title = q ? `${q} — Triage — Rippit` : "Triage — Rippit";
+    document.title = q ? `${q} — Triage — Orrit` : "Triage — Orrit";
   }, [q]);
 
   /* The window's numbers. A stats outage leaves the tiles at "—" rather than
@@ -212,7 +212,7 @@ function readError(e: unknown): string {
  * Scenarios whose runs carry no identifier to match — no webhook payload and
  * no identifying run name. One line under the table; the fix (Make's
  * Customize Run Name module) sits in the tooltip, and it is the user's to
- * make: Rippit never edits a scenario.
+ * make: Orrit never edits a scenario.
  */
 function RunNameNudge({ recommendations }: { recommendations: RecordRuns["recommendations"] }) {
   if (!recommendations || recommendations.length === 0) return null;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
-import { FAR_AT, FAR_HYSTERESIS, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP, ZOOM_TWEEN_MS } from "@/lib/workflowMap/tokens";
+import { CHAIN_GAP, FAR_AT, FAR_HYSTERESIS, STEP_COL_W, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP, ZOOM_TWEEN_MS } from "@/lib/workflowMap/tokens";
 
 /*
  * useMapCamera — map-style navigation on top of the native scroll viewport.
@@ -32,6 +32,17 @@ import { FAR_AT, FAR_HYSTERESIS, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP, ZOOM_TWEEN_MS } 
  * Zoom anchoring: content point p = (scroll + cursor − pad) / zoom stays
  * under the cursor, applied in a layout effect right after the zoomed
  * render commits.
+ *
+ * First load frames the map once, as soon as its layout has settled, unless
+ * something has already moved the camera (a deep link, a replayed run, the
+ * reader). If every card fits at READABLE_ZOOM or closer, the whole map is
+ * centred with even margins, never above 100 %. Otherwise the start of the
+ * flow — the viewed pill, `aria-current` — is placed at the top-left of the
+ * usable area at the closest zoom that still shows it and START_STEPS chain
+ * steps, never below READABLE_ZOOM, and the reader pans right along the flow.
+ * A rung change never reframes: layer and zoom stay independent. `fit` (F) is
+ * still the full fit. The content box gets `data-wm-framed` once this has
+ * run or been skipped, so a script driving the map can wait for it.
  * Zoom glides to its target over ZOOM_TWEEN_MS (ease-out, one rAF loop,
  * retargetable mid-flight) unless `instant` (LITE or reduced motion).
  */
@@ -64,6 +75,24 @@ export interface MapCamera {
 }
 
 const clamp = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+
+/* First-load framing. Viewport pixels unless noted. */
+/** Even margin around a whole-map fit, and left of the start card. */
+const FRAME_MARGIN = 48;
+/** The band kept clear of cards at the top: the toolbar sits 12px from the
+ *  top and is 34px tall, and cards start 18px below it. */
+const FRAME_TOP = 12 + 34 + 18;
+/** A step name is 12.5px and falls below the readability floor at 0.76, so
+ *  framing never zooms out past this — well clear of far mode at FAR_AT. */
+const READABLE_ZOOM = 0.8;
+/** The start framing aims to show the viewed pill and this many chain steps. */
+const START_STEPS = 4;
+/** Layout unchanged this long counts as settled. */
+const FRAME_QUIET_MS = 300;
+/** Frame anyway once cards have been on the page this long. */
+const FRAME_WAIT_MS = 2500;
+/** A framing zoom this close to 100 % is 100 %: text renders crisp there. */
+const FRAME_SNAP = 0.97;
 /** Controls a drag must never start on. Tree items are fine — a click on
  *  them stays a click below DRAG_PX. */
 const NO_DRAG = 'button, a, input, textarea, select, [role="dialog"], [role="img"]';
@@ -238,6 +267,87 @@ export function useMapCamera({
     },
     [scrollElement, zoomTo]
   );
+
+  /* ---- first-load framing ---- */
+
+  const framed = useRef(false);
+  useEffect(() => {
+    const sb = scrollElement();
+    const inner = innerElement();
+    if (!sb || !inner || typeof ResizeObserver === "undefined") return;
+    let timer = 0;
+    let firstSeen = 0;
+    const done = () => {
+      framed.current = true;
+      inner.dataset.wmFramed = "";
+    };
+    const frame = () => {
+      if (framed.current) return;
+      done();
+      /* Once the camera is someone else's — a deep link, a replayed run, the
+         reader's own drag or zoom — first-load framing has nothing to add. */
+      const z0 = zoomRef.current;
+      if (z0 !== 1 || glide.current || Math.abs(sb.scrollLeft - pad.current.x) > 1 || Math.abs(sb.scrollTop - pad.current.y) > 1) return;
+      const ir = inner.getBoundingClientRect();
+      let left = Infinity;
+      let top = Infinity;
+      let right = -Infinity;
+      let bottom = -Infinity;
+      for (const el of inner.querySelectorAll<HTMLElement>("[data-node-id]")) {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) continue;
+        left = Math.min(left, r.left);
+        top = Math.min(top, r.top);
+        right = Math.max(right, r.right);
+        bottom = Math.max(bottom, r.bottom);
+      }
+      if (!(right > left && bottom > top)) return;
+      const vw = sb.clientWidth;
+      const vh = sb.clientHeight;
+      const usableW = vw - 2 * FRAME_MARGIN;
+      const usableH = vh - FRAME_TOP - FRAME_MARGIN;
+      if (usableW <= 0 || usableH <= 0) return;
+      /* Content coordinates: the inner box's own, unscaled. */
+      const box = { x: (left - ir.left) / z0, y: (top - ir.top) / z0, w: (right - left) / z0, h: (bottom - top) / z0 };
+      const whole = Math.min(usableW / box.w, usableH / box.h, 1);
+      let z: number;
+      let point: { x: number; y: number };
+      let at: { x: number; y: number };
+      if (whole >= READABLE_ZOOM) {
+        z = whole;
+        point = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
+        at = { x: vw / 2, y: FRAME_TOP + usableH / 2 };
+      } else {
+        const start = inner.querySelector<HTMLElement>('[aria-current="true"]')?.closest<HTMLElement>("[data-node-id]") ?? null;
+        const s = start?.getBoundingClientRect();
+        const sx = s ? (s.left - ir.left) / z0 : box.x;
+        const sy = s ? (s.top - ir.top) / z0 : box.y;
+        const sw = s ? s.width / z0 : 0;
+        z = Math.max(READABLE_ZOOM, Math.min(1, usableW / (sw + START_STEPS * (STEP_COL_W + CHAIN_GAP))));
+        point = { x: sx, y: sy };
+        at = { x: FRAME_MARGIN, y: FRAME_TOP };
+      }
+      z = z >= FRAME_SNAP ? 1 : Math.round(clamp(z) * 1000) / 1000;
+      /* Put the content point under its viewport anchor at the current zoom,
+         then commit the zoom anchored there, which keeps it there. */
+      sb.scrollTo({ left: pad.current.x + point.x * z0 - at.x, top: pad.current.y + point.y * z0 - at.y, behavior: "instant" });
+      if (z !== z0) commit(z, at.x, at.y);
+    };
+    const settleThenFrame = () => {
+      if (framed.current || !inner.querySelector("[data-node-id]")) return;
+      const now = performance.now();
+      if (!firstSeen) firstSeen = now;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(frame, Math.max(0, Math.min(FRAME_QUIET_MS, firstSeen + FRAME_WAIT_MS - now)));
+    };
+    const ro = new ResizeObserver(settleThenFrame);
+    ro.observe(inner);
+    settleThenFrame();
+    return () => {
+      ro.disconnect();
+      window.clearTimeout(timer);
+    };
+  }, [scrollElement, innerElement, commit]);
 
   /* ---- wheel (non-passive, so zoom can cancel the native scroll) ---- */
 

@@ -41,7 +41,7 @@ export const MapMinimap = memo(function MapMinimap({
   zoom: number;
   boxes: MapBox[];
   rowBoxes: MapBox[];
-  /** Run replay: nodes the run did not reach or Rippit could not check. */
+  /** Run replay: nodes the run did not reach or Orrit could not check. */
   dimIds?: ReadonlySet<string>;
 }) {
   const [vp, setVp] = useState<Viewport | null>(null);

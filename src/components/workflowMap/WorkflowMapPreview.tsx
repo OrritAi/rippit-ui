@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { ExecutionsResponse, ExecutionTrace, LinkMap, ScenarioSummary } from "@/app/lib/api";
+import type { ExecutionsResponse, ExecutionTrace, LinkMap, ScenarioSummary, WorkflowShapes } from "@/app/lib/api";
 import type { WorkflowRef } from "@/lib/portals";
 import type { SummaryEntry, WorkflowKey } from "@/lib/workflowMap/types";
-import { PROTOTYPE, PROTOTYPE_NOW, PROTOTYPE_PAYLOAD, PROTOTYPE_RELATED_TRACE, PROTOTYPE_RUN, PROTOTYPE_TRACE, big, tall } from "@/lib/workflowMap/fixtures/prototype";
+import { COLLAPSE, COLLAPSE_SHAPES, PROTOTYPE, PROTOTYPE_NOW, PROTOTYPE_PAYLOAD, PROTOTYPE_RELATED_TRACE, PROTOTYPE_RUN, PROTOTYPE_TRACE, big, tall } from "@/lib/workflowMap/fixtures/prototype";
 import type { SummaryStore } from "@/lib/workflowMap/summaryStore";
 import { useShell } from "@/components/shell/shell-context";
 import { WorkflowMapView } from "./WorkflowMap";
@@ -13,7 +13,13 @@ import { WorkflowMapView } from "./WorkflowMap";
  * Client half of /w/preview — the prototype fixture through the real map
  * with a stub store (everything preloaded, `ensure` is a no-op, so nothing
  * touches the network) and a stubbed node-detail loader. `big` renders 300
- * callers to exercise LITE and root windowing; `run` replays PROTOTYPE_TRACE
+ * A snapshot uses its OWN shapes when it was exported with them and none
+ * otherwise; the harness root carries `data-plan="served" | "graph"` so a
+ * geometry checker can assert which fold plan it is actually looking at.
+ * `big` renders 300
+ * callers to exercise LITE and root windowing; `shapes` renders the 119-step
+ * GoHighLevel workflow with its nine-outcome router, so the fold cards and
+ * the ×4 group card can be looked at; `run` replays PROTOTYPE_TRACE
  * over PROTOTYPE_RUN (dimmed branch, failed ring, unchecked module, reached
  * pill) with a stubbed input loader, so geometry checks cover the overlay.
  * The related run of make:913 (PROTOTYPE_RELATED_TRACE) is handed over as
@@ -54,6 +60,12 @@ export interface MapSnapshot {
   viewed: WorkflowRef;
   linkMap: LinkMap;
   summaries: Record<string, ScenarioSummary | { error: string; stepsUnavailable?: boolean }>;
+  /** The viewed workflow's `GET …/shapes` body, if it was exported with one.
+   *  Without it the canvas folds from the graph alone — a legitimate path to
+   *  test, but NOT the one real data normally takes, so `data-plan` on the
+   *  harness root says which is in force rather than leaving it to be
+   *  guessed from the shape of the output. */
+  shapes?: WorkflowShapes;
 }
 
 function fromSnapshot(snap: MapSnapshot) {
@@ -66,8 +78,15 @@ function fromSnapshot(snap: MapSnapshot) {
   return { viewed: snap.viewed, linkMap: snap.linkMap, summaries };
 }
 
-export function WorkflowMapPreview({ big: isBig, tall: tallN = 0, snapshot = null, run = false }: { big: boolean; tall?: number; snapshot?: MapSnapshot | null; run?: boolean }) {
-  const fixture = useMemo(() => (snapshot ? fromSnapshot(snapshot) : isBig ? big(300) : tallN > 0 ? tall(tallN) : run ? PROTOTYPE_RUN : PROTOTYPE), [isBig, tallN, snapshot, run]);
+export function WorkflowMapPreview({ big: isBig, tall: tallN = 0, snapshot = null, run = false, shapes = false }: { big: boolean; tall?: number; snapshot?: MapSnapshot | null; run?: boolean; shapes?: boolean }) {
+  const fixture = useMemo(
+    () => (snapshot ? fromSnapshot(snapshot) : shapes ? COLLAPSE : isBig ? big(300) : tallN > 0 ? tall(tallN) : run ? PROTOTYPE_RUN : PROTOTYPE),
+    [isBig, tallN, snapshot, run, shapes],
+  );
+  /* A snapshot brings its own, or none. Never the fixture's: that element
+     tree is keyed to the fixture's workflow, so handing it to a snapshot
+     silently drops to the graph fallback while looking like the real thing. */
+  const shapeGroups: WorkflowShapes | null = snapshot ? (snapshot.shapes ?? null) : shapes ? COLLAPSE_SHAPES : null;
   /* Esc (with nothing else open) clears the replay, as the real page does;
      a change of `run` re-seeds it (state-from-props, no effect). */
   const [trace, setTrace] = useState<ExecutionTrace | null>(run ? PROTOTYPE_TRACE : null);
@@ -81,10 +100,10 @@ export function WorkflowMapPreview({ big: isBig, tall: tallN = 0, snapshot = nul
     [fixture]
   );
   useEffect(() => {
-    document.title = "Workflow Map preview — Rippit";
+    document.title = "Workflow Map preview — Orrit";
   }, []);
   return (
-    <div className="flex h-full min-w-0 flex-col">
+    <div className="flex h-full min-w-0 flex-col" data-plan={shapeGroups ? "served" : "graph"}>
       <EscapeBridge />
       <WorkflowMapView
         viewed={fixture.viewed}
@@ -93,6 +112,7 @@ export function WorkflowMapPreview({ big: isBig, tall: tallN = 0, snapshot = nul
         runs={RUNS}
         fetchDetail={() => Promise.resolve(null)}
         now={PROTOTYPE_NOW}
+        shapes={shapeGroups}
         run={trace}
         onClearRun={() => setTrace(null)}
         onLoadPayload={() => new Promise((resolve) => setTimeout(() => resolve(PROTOTYPE_PAYLOAD), 300))}

@@ -58,7 +58,7 @@ export function MonitorHeader({
         >
           <div className="size-1.5 rounded-full bg-bg" />
         </div>
-        <div className="text-[17px] font-bold tracking-[-0.3px]">rippit</div>
+        <div className="text-[17px] font-bold tracking-[-0.3px]">orrit</div>
         <div className="mt-px text-[12px] text-t3">Monitor</div>
       </div>
 

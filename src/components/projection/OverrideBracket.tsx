@@ -64,7 +64,7 @@ export function OverrideBracket({
 }
 
 /** The notice above the canvas while any override is active. Says how many,
- *  what changed, and — the part that matters — that nothing left Rippit. */
+ *  what changed, and — the part that matters — that nothing left Orrit. */
 export function OverrideNotice({
   count,
   detail,

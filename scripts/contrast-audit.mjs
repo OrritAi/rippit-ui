@@ -76,6 +76,28 @@ const CHECKS = [
   ["dark pill tint border (accent 28% over #101014, non-text)", "#0ea5e9", "#101921", 3],
   ["light --text on pill tint (accent 6% over #ffffff)", "#18181b", "#f0f8fc", 4.5],
   ["light pill tint border (accent 28% over #ffffff, non-text)", "#0284c7", "#f0f8fc", 3],
+  // A pill's end cap (WorkflowPill): the "12 steps" label is text on the
+  // tint; the chevron is a graphic on the circle — accent 14% over the tint
+  // while shut, then --pill on a solid --map-accent fill once open.
+  ["dark --map-accent-text end-cap label on pill tint", "#0ea5e9", "#101921", 4.5],
+  ["dark end-cap chevron on its circle (accent 14% over pill tint, non-text)", "#0ea5e9", "#102d3d", 3],
+  ["dark --pill chevron on the open end cap's --map-accent fill (non-text)", "#101014", "#0ea5e9", 3],
+  ["light --map-accent-text end-cap label on pill tint", "#0369a1", "#f0f8fc", 4.5],
+  ["light end-cap chevron on its circle (accent 14% over pill tint, non-text)", "#0369a1", "#cfe7f4", 3],
+  ["light --pill chevron on the open end cap's --map-accent fill (non-text)", "#ffffff", "#0284c7", 3],
+  // Main-flow cards (--map-main): the viewed workflow's own steps and branches.
+  // Card text and the end cap sit on this surface too.
+  ["dark --text on a main-flow card (--map-main)", "#f4f4f5", "#151729", 4.5],
+  ["dark --t3 detail line on a main-flow card", "#8b8b94", "#151729", 4.5],
+  ["dark --map-accent-text end-cap label / branch name on a main-flow card", "#0ea5e9", "#151729", 4.5],
+  ["light --text on a main-flow card (--map-main)", "#18181b", "#eef2ff", 4.5],
+  ["light --t3 detail line on a main-flow card", "#6b6b74", "#eef2ff", 4.5],
+  ["light --map-accent-text end-cap label / branch name on a main-flow card", "#0369a1", "#eef2ff", 4.5],
+  // The same end cap in a card's footer (StepNode `.wm-fold`), on plain --pill.
+  ["dark --map-accent-text end-cap label on --pill (card footer)", "#0ea5e9", "#101014", 4.5],
+  ["dark end-cap chevron on its circle (accent 14% over --pill, non-text)", "#0ea5e9", "#102532", 3],
+  ["light --map-accent-text end-cap label on --pill (card footer)", "#0369a1", "#ffffff", 4.5],
+  ["light end-cap chevron on its circle (accent 14% over --pill, non-text)", "#0369a1", "#dceef7", 3],
   // Viewed workflow pill — the FSM start state: solid --text fill, name and
   // chip in --bg, double ring --bg / --text over the canvas.
   ["dark --bg name on viewed pill (--text fill)", DARK_BG, "#f4f4f5", 4.5],

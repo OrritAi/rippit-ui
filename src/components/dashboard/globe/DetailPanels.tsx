@@ -47,7 +47,7 @@ function healthLine(node: GlobeNode): string {
     case "inactive":
       return `Inactive in ${platformShort(node.provider)}`;
     case "not-captured":
-      return "Rippit could not read it";
+      return "Orrit could not read it";
     case "removed":
       return `Removed in ${platformShort(node.provider)}`;
     default:

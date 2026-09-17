@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { HelpCircle, X } from "lucide-react";
+import { ChevronDown, GitBranch, HelpCircle, X } from "lucide-react";
 
 /*
  * The legend for the unified system map (/map). Keep this the single place
@@ -54,7 +54,7 @@ const ITEMS: Item[] = [
   {
     swatch: <span className="size-3 rounded-[5px] border-2" style={{ borderColor: "var(--chg)", boxShadow: "0 0 6px var(--chg)" }} />,
     label: "Changed since you last looked",
-    hint: "Rippit snapshot diff at sync — open Changes for details",
+    hint: "Orrit snapshot diff at sync — open Changes for details",
   },
   {
     swatch: <span className="size-2.5 rounded-full border-2 border-plane" style={{ background: "var(--warn)" }} />,
@@ -68,9 +68,82 @@ const ITEMS: Item[] = [
     swatch: <span className="rounded-full px-1.5 py-[1px] text-[10px] font-semibold" style={{ background: "color-mix(in srgb, var(--warn) 18%, transparent)", color: "var(--warn-text)" }}>↗</span>,
     label: "Portal to connected workflow",
   },
+  // The ladder of description (src/lib/workflowMap/model.ts). A large
+  // workflow is mostly the same branch several times over; these marks are
+  // how the canvas says so instead of drawing it.
+  {
+    swatch: <span className="h-3 w-5 rounded-[4px] border border-map-main-line bg-map-main" />,
+    label: "The workflow you're viewing",
+    hint: "Its own steps and branches. A workflow it calls hangs below in plain cards",
+  },
+  {
+    swatch: (
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-map-accent-text">
+        12 steps
+        <span className="flex size-4 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--map-accent)_14%,transparent)]">
+          <ChevronDown aria-hidden="true" strokeWidth={2.5} className="size-[10px]" />
+        </span>
+      </span>
+    ),
+    label: "Drawn as one card",
+    hint: "A branch, or a run of steps in a line. Click to show what it stands for",
+  },
+  {
+    swatch: (
+      <span className="relative inline-block">
+        <span aria-hidden="true" className="absolute left-[3px] top-[3px] size-3 rounded-[3px] border border-line opacity-60" />
+        <span className="relative block size-3 rounded-[3px] border border-line-strong bg-pill" />
+      </span>
+    ),
+    label: "Many outcomes in one card",
+    hint: "Overview only — the thickness is how many branches stand behind it",
+  },
+  {
+    swatch: (
+      <span className="flex size-4 items-center justify-center rounded-[5px] border border-line text-t3">
+        <GitBranch aria-hidden="true" className="size-[9px]" />
+      </span>
+    ),
+    label: "A branch",
+    hint: "Its own name in the accent — a branch belongs to no app, so it wears no app tile",
+  },
+  {
+    swatch: (
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-map-accent-text">
+        12 steps
+        <span className="flex size-4 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--map-accent)_14%,transparent)]">
+          <ChevronDown aria-hidden="true" strokeWidth={2.5} className="size-[10px]" />
+        </span>
+      </span>
+    ),
+    label: "Show a connected workflow's steps",
+    hint: "The circle fills once they are showing — click it again to hide them",
+  },
+  {
+    swatch: <span className="text-[11px] font-medium text-t2">↺ already open above</span>,
+    label: "Already open further up",
+    hint: "This workflow calls back into one already open above it, so it cannot open again here",
+  },
+  {
+    swatch: (
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-map-accent-text">
+        ↗ open in Canceled
+        <span className="flex size-4 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--map-accent)_14%,transparent)]">
+          <ChevronDown aria-hidden="true" strokeWidth={2.5} className="size-[10px]" />
+        </span>
+      </span>
+    ),
+    label: "Open at another step",
+    hint: "The same workflow is called from several places and drawn open at one — click to open it here instead",
+  },
+  {
+    swatch: <span className="text-[11px] font-semibold text-t1">9 outcomes</span>,
+    label: "Every outcome of one decision",
+    hint: "Overview only — it says how many and how many shapes, never that they match",
+  },
   // Step data's provenance register. The Legend is the single vocabulary, so
   // every mark that carries meaning gets a row — these four are how a panel
-  // answers "did this happen, or did Rippit work it out".
+  // answers "did this happen, or did Orrit work it out".
   {
     swatch: <span className="h-4 w-0" style={{ borderLeft: "2px solid var(--t2)" }} />,
     label: "Observed",
@@ -84,12 +157,12 @@ const ITEMS: Item[] = [
   {
     swatch: <span className="h-4 w-0" style={{ borderLeft: "2px dashed var(--t3)" }} />,
     label: "Computed",
-    hint: "Rippit worked it out from the steps above — not what the platform reported",
+    hint: "Orrit worked it out from the steps above — not what the platform reported",
   },
   {
     swatch: <span className="h-4 w-0" style={{ borderLeft: "2px dotted var(--t3)" }} />,
     label: "Needs a step",
-    hint: "Depends on a step's output Rippit cannot compute; supply it to continue",
+    hint: "Depends on a step's output Orrit cannot compute; supply it to continue",
   },
 ];
 

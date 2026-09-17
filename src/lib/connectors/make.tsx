@@ -39,7 +39,7 @@ export const makeConnector: ConnectorDescriptor = {
       },
     ],
     helpText:
-      "Create an API token in Make under Profile → API. The organization ID is the number in your Make dashboard URL (optional on newer Rippit backends — it defaults to the token’s first organization).",
+      "Create an API token in Make under Profile → API. The organization ID is the number in your Make dashboard URL (optional on newer Orrit backends — it defaults to the token’s first organization).",
   },
 
   async fetchTree(conn) {

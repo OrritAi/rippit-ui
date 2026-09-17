@@ -29,7 +29,7 @@ export default function MartechDetailPage({ params }: { params: Promise<{ id: st
   }, [id]);
 
   useEffect(() => {
-    document.title = "Martech — Rippit";
+    document.title = "Martech — Orrit";
     void load();
   }, [load]);
 

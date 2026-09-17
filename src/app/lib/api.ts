@@ -30,7 +30,7 @@ export function setAuthFailureHandler(fn: (() => void) | null) {
 
 /* Active workspace (collaboration scope). Persisted so a reload keeps the
    same workspace; the API resolves the user's default when unset. */
-const WORKSPACE_KEY = "rippit.workspace";
+const WORKSPACE_KEY = "orrit.workspace";
 
 export function getActiveWorkspaceId(): string | null {
   if (typeof window === "undefined") return null;
@@ -46,7 +46,7 @@ export function setActiveWorkspaceId(id: string | null) {
 /* Support context (platform staff viewing a customer organization read-only).
    While set, every request names that organization and carries the support
    header; the API answers with role "support" and no permissions. */
-const SUPPORT_KEY = "rippit.support";
+const SUPPORT_KEY = "orrit.support";
 
 export interface SupportContext {
   workspaceId: string;
@@ -86,11 +86,11 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   if (session) headers.set("Authorization", `Bearer ${session.access_token}`);
   const support = getSupport();
   if (support) {
-    headers.set("X-Rippit-Workspace", support.workspaceId);
-    headers.set("X-Rippit-Support", "1");
+    headers.set("X-Orrit-Workspace", support.workspaceId);
+    headers.set("X-Orrit-Support", "1");
   } else {
     const workspaceId = getActiveWorkspaceId();
-    if (workspaceId) headers.set("X-Rippit-Workspace", workspaceId);
+    if (workspaceId) headers.set("X-Orrit-Workspace", workspaceId);
   }
 
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
@@ -231,7 +231,7 @@ export interface LastRun {
 /** Per-node state of one execution as the API reports it. `touched` may
  *  arrive with a `status` of `error` / `warning` instead of the collapsed
  *  `failed` / `warning`; the map overlay (`lib/workflowMap/run.ts`)
- *  normalises both shapes. `unknown` = Rippit could not check that module
+ *  normalises both shapes. `unknown` = Orrit could not check that module
  *  (coverage cut-off / rate limit), never "did not run". */
 export type RunNodeState = "touched" | "warning" | "failed" | "untouched" | "unknown";
 
@@ -317,7 +317,7 @@ export interface ExecutionPayload {
 /** Where a value came from — the four classes of truth. Colour is spoken for
  *  (status and app identity), so the register rides on the stroke style of a
  *  left rule plus a mono tag; see `components/projection/Provenance.tsx`.
- *  `resolved`/`constant` are Rippit's own arithmetic, `opaque` has known
+ *  `resolved`/`constant` are Orrit's own arithmetic, `opaque` has known
  *  provenance but no computed value, `unresolved` names the step it needs. */
 export type FieldProvenance =
   | "observed"
@@ -335,10 +335,10 @@ export interface BundleOperation {
   input: unknown;
   output: unknown;
   error: boolean;
-  /** Make's own flag, kept distinct from Rippit's cap (`cappedBy`). */
+  /** Make's own flag, kept distinct from Orrit's cap (`cappedBy`). */
   truncated: boolean;
-  /** Set when Rippit dropped the value to stay inside its own ceiling. */
-  cappedBy?: "rippit";
+  /** Set when Orrit dropped the value to stay inside its own ceiling. */
+  cappedBy?: "orrit";
   /** The value would not parse as JSON and is shown as the platform sent it. */
   unparsed?: boolean;
 }
@@ -399,7 +399,7 @@ export interface ProjectedField {
 }
 
 /** How one node's projected path compares to the run that actually happened.
- *  `now-unevaluable` is deliberately not a divergence: a gate Rippit cannot
+ *  `now-unevaluable` is deliberately not a divergence: a gate Orrit cannot
  *  evaluate is a gap, and reporting it as a change would cry wolf on every
  *  workflow containing an external call. */
 export type DiffOutcome =
@@ -524,6 +524,21 @@ export function fetchBundles(
 ): Promise<ExecutionBundles> {
   return apiFetch<ExecutionBundles>(
     `/workflows/${provider}/${encodeURIComponent(externalId)}/executions/${encodeURIComponent(executionId)}/bundles`
+  );
+}
+
+/** The repeated structure in one workflow, so the canvas can draw each
+ *  pattern once. `colocated` narrows `groups` to what a single card could
+ *  actually stand for — `elements` and the counts are identical either way,
+ *  and the canvas reads those. Read-side only: it derives from the stored
+ *  contract, reaches no platform and captures nothing. */
+export function fetchShapes(
+  provider: ProviderId,
+  externalId: string,
+  scope: "all" | "colocated" = "colocated"
+): Promise<WorkflowShapes> {
+  return apiFetch<WorkflowShapes>(
+    `/workflows/${provider}/${encodeURIComponent(externalId)}/shapes?scope=${scope}`
   );
 }
 
@@ -722,7 +737,7 @@ export interface RunPayloadState {
 }
 
 /*
- * Everything Rippit stored about one run: every column of the execution row,
+ * Everything Orrit stored about one run: every column of the execution row,
  * every module row, the coverage watermarks, what it carried, deep links,
  * and `raw` — the rows verbatim, so the panel is never a summary of a
  * summary. Provider-agnostic: any platform whose runtime lands answers here.
@@ -1304,8 +1319,110 @@ export interface Connection {
   from: NodeId;
   to: NodeId;
   label?: string;
+  /** Why execution takes this branch — "Outcome is 'No-Showed'". Belongs to
+   *  the line, not to either end: putting the predicate on the branch's
+   *  first step would conflate "what this step is" with "why we came here".
+   *  Null on every edge that is not a conditional branch, and on branches
+   *  whose platform exposes no readable predicate. */
+  condition?: string | null;
   kind?: string;
   status?: "ok" | "dead" | "unmatched";
+}
+
+/**
+ * `GET /workflows/{provider}/{id}/shapes` — the repeated structure in one
+ * workflow, so the canvas can draw each pattern once.
+ *
+ * Two answers, for two questions. `groups` says WHAT repeats, wherever it
+ * occurs, which is the estate view's question. `elements` says WHERE, as a
+ * tree of positions, which is the canvas's — and the difference is not a
+ * detail: a singleton arm is still one card, a run of like steps is one tile
+ * whatever its length, and an arm is a recursion boundary. None of that is
+ * expressible in a flat group list, and the canvas reads `elements` alone.
+ *
+ * Every id here is a step id of the workflow — the same ids `ModuleInfo.id`
+ * and `?step=` use.
+ */
+export interface ShapeMember {
+  /** The step this member is rooted at. */
+  id: NodeId;
+  /** Its branch label, as the platform wrote it ("No-Showed"). */
+  label: string;
+  /** Every step it covers — the fold plan, so no caller walks the graph again. */
+  nodeIds: NodeId[];
+  /** `nodeIds.length`. */
+  count: number;
+}
+
+export interface ShapeSignature {
+  nodeCount: number;
+  depth: number;
+  hash: string;
+}
+
+/**
+ * One thing a reader sees, and what it stands for.
+ *  - `tile` — consecutive steps on one target, drawn as one card.
+ *  - `fan`  — a branch point; it draws nothing itself, its arms are its
+ *             `children`.
+ *  - `arm`  — one outcome, with `count` members behind it. One member is
+ *             still a card: grouping needs two, drawing does not.
+ */
+export interface ShapeElement {
+  kind: "tile" | "fan" | "arm";
+  target: string;
+  count: number;
+  depth: number;
+  /** Every real step this element stands for. */
+  nodeIds: NodeId[];
+  signature?: ShapeSignature;
+  /** Arms only: the step the card draws — `members[0].id`. */
+  representative?: NodeId;
+  /** Arms only, representative first. */
+  members?: ShapeMember[];
+  /** Arms only: every step behind the members this card does not draw. */
+  hidden?: NodeId[];
+  /** What opening this element reveals. */
+  children?: ShapeElement[];
+}
+
+/** One repetition, wherever it occurs. The canvas reads `elements`, not this. */
+export interface ShapeGroup {
+  kind: "shape" | "run";
+  signature: ShapeSignature;
+  representative: NodeId;
+  count: number;
+  target: string;
+  /** The fan-out these are the arms of, or null for a run. */
+  fanOut: NodeId | null;
+  nestedIn: number | null;
+  /** Whether one card could stand for every member — they occupy one
+   *  position. Deliberately not the same as `fanOut != null`. */
+  colocated: boolean;
+  members: ShapeMember[];
+  assets?: AssetRef[];
+}
+
+export interface WorkflowShapes {
+  groups: ShapeGroup[];
+  elements: ShapeElement[];
+  nodeCount: number;
+  fanOutCount: number;
+  hiddenCount: number;
+  /** Shape metrics, none of which predicts what the canvas draws: they count
+   *  a shape once however many places its members occupy. The rendered figure
+   *  comes from walking `elements`. */
+  distinctShapes: number;
+  expanded: number;
+  packedOnly: number;
+  packAt: number;
+  shapeFloor: number;
+  shapeVersion: number;
+  scope: "all" | "colocated";
+  /** The connection path exposes no step content (GHL OAuth list-only). */
+  stepsUnavailable?: boolean;
+  reason?: string;
+  cycleBroken?: boolean;
 }
 
 export interface ModuleDetail {
@@ -1810,7 +1927,7 @@ export interface HealthSummary {
   total: number;
 }
 
-/** `kind: "breakage"` excludes Rippit's own capture failures — the thing that
+/** `kind: "breakage"` excludes Orrit's own capture failures — the thing that
  *  must never be mistaken for the estate being broken. */
 export function fetchIssues(
   kind: "all" | "breakage" | "capture" = "all"
@@ -1927,7 +2044,7 @@ export interface WorkflowCard {
   changedSince?: { count: number; at: string | null };
   ownerUserId?: string;
   watching?: boolean;
-  /** What Rippit actually has for this workflow, and when it got it. */
+  /** What Orrit actually has for this workflow, and when it got it. */
   capture?: CaptureState;
 }
 
@@ -1994,10 +2111,10 @@ export function fetchGraph(keys: { source: ProviderId; refId: string }[] = []): 
  * arrays plus flat top-level `pages`, `automations`, `decisions`,
  * `conversions`, `tracking`, `adPlatform`, `unplaced`, `source`. Everything
  * is evidence-labelled: "configured" (captured from the platform's config)
- * or "not-captured" (Rippit has nothing for it). Never a runtime claim.
+ * or "not-captured" (Orrit has nothing for it). Never a runtime claim.
  */
 
-/** What Rippit can honestly say about a node: captured from configuration,
+/** What Orrit can honestly say about a node: captured from configuration,
  * or not captured at all. There is no third state. */
 export type Evidence = "configured" | "not-captured";
 

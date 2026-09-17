@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import posthog from "posthog-js";
 import type { Connection } from "@/app/lib/connections-store";
 import { InlineConfirm } from "@/components/shared/InlineConfirm";
 import { StatusPill } from "@/components/shared/StatusPill";
@@ -97,6 +98,7 @@ export function ConnectionRow({
             // the whole settings page open on a slow delete.
             onConfirm={() => {
               setRemoving(true);
+              posthog.capture("connection_disconnect_requested", { provider: connection.provider });
               void onDisconnect();
               setConfirming(false);
             }}
@@ -108,7 +110,10 @@ export function ConnectionRow({
               type="button"
               variant="outline"
               size="xs"
-              onClick={onSync}
+              onClick={() => {
+                posthog.capture("connection_sync_requested", { provider: connection.provider });
+                onSync();
+              }}
               disabled={syncing || busy}
               aria-busy={syncing || undefined}
               title={busy && !syncing ? "Another connection on this credential is syncing" : undefined}

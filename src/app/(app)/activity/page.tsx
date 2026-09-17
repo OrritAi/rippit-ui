@@ -19,7 +19,7 @@ function NotificationDetail({ id }: { id: string }) {
   useEffect(() => {
     if (!n || n.readAt) return;
     markNotificationsRead([n.id])
-      .then(() => window.dispatchEvent(new Event("rippit:notifications")))
+      .then(() => window.dispatchEvent(new Event("orrit:notifications")))
       .catch(() => {});
   }, [n]);
   if (!data) return <p className="text-[13px] text-t3">Loading…</p>;
@@ -40,7 +40,7 @@ function NotificationDetail({ id }: { id: string }) {
             <Icon aria-hidden="true" className="size-4" />
           </span>
         }
-        title={`${a.actorName ?? "Rippit"} ${describeActivity(a)}`}
+        title={`${a.actorName ?? "Orrit"} ${describeActivity(a)}`}
         sub={`${a.kind} · ${relativeTime(a.createdAt)}${n.readAt ? "" : " · unread"}`}
         openHref={href}
         openLabel="Open workflow"
@@ -60,7 +60,7 @@ function NotificationDetail({ id }: { id: string }) {
       </DetailCard>
       {isComment && (
         <DetailCard title="Thread">
-          <CommentsThread targetType={a.targetKey!.startsWith("node:") ? "node" : a.targetKey!.startsWith("issue:") ? "issue" : "workflow"} targetKey={a.targetKey!} onCountChange={() => window.dispatchEvent(new Event("rippit:comments"))} />
+          <CommentsThread targetType={a.targetKey!.startsWith("node:") ? "node" : a.targetKey!.startsWith("issue:") ? "issue" : "workflow"} targetKey={a.targetKey!} onCountChange={() => window.dispatchEvent(new Event("orrit:comments"))} />
         </DetailCard>
       )}
     </div>
@@ -82,7 +82,7 @@ export default function ActivityPage() {
   const [gen, setGen] = useState(0);
 
   useEffect(() => {
-    document.title = "Notifications — Rippit";
+    document.title = "Notifications — Orrit";
   }, []);
 
   useEffect(() => {
@@ -133,7 +133,7 @@ export default function ActivityPage() {
               markNotificationsRead()
                 .then(() => {
                   setGen((g) => g + 1);
-                  window.dispatchEvent(new Event("rippit:notifications"));
+                  window.dispatchEvent(new Event("orrit:notifications"));
                 })
                 .catch(() => {})
             }

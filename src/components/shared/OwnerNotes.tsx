@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import posthog from "posthog-js";
 import { Bell, BellOff, UserCircle2 } from "lucide-react";
 import { fetchMembers, fetchWorkflowMeta, putWorkflowMeta, setWatch, WorkspaceMember, WorkflowMeta } from "@/app/lib/api";
 import { useWorkspace } from "@/components/app/WorkspaceProvider";
@@ -115,7 +116,14 @@ export function WatchToggle({
     <button
       type="button"
       aria-pressed={watching}
-      onClick={() => setWatch(`wf:${provider}:${externalId}`, !watching).then((r) => onChange(r.watching)).catch(() => {})}
+      onClick={() =>
+        setWatch(`wf:${provider}:${externalId}`, !watching)
+          .then((r) => {
+            posthog.capture("workflow_watch_toggled", { provider, watching: r.watching });
+            onChange(r.watching);
+          })
+          .catch(() => {})
+      }
       title={watching ? "Watching — you get notified about changes, comments and failures" : "Watch this workflow"}
       className={`inline-flex size-[26px] shrink-0 items-center justify-center rounded-full border transition-colors ${
         watching ? "border-t1 text-t1" : "border-line-strong text-t3 hover:border-t1 hover:text-t1"
@@ -159,6 +167,7 @@ export function NotesBody({
               setSaving(true);
               try {
                 const m = await putWorkflowMeta(provider, externalId, { notes: draft });
+                posthog.capture("workflow_notes_saved", { provider });
                 onChange({ ...(meta ?? { ownerUserId: null, ownerName: null }), ...m, watching: meta?.watching });
               } finally {
                 setSaving(false);

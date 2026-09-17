@@ -12,7 +12,7 @@ import { ListRow, PanelEmpty, PanelSkeleton } from "./ListRow";
 
 /* Assets side panel: the registry as a structure — kinds (with counts) that
    expand into their assets; clicking an asset opens it on the right. */
-const OPEN_KEY = "rippit.assets.open";
+const OPEN_KEY = "orrit.assets.open";
 const EMPTY: Record<string, boolean> = {};
 
 export function AssetsPanel() {

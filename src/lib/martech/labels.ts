@@ -30,7 +30,7 @@ import type {
 /*
  * Copy and glyphs for the Martech view. The vocabulary is deliberately
  * small: a node is "Configured" or "Not captured". Nothing here says fires,
- * healthy or working — Rippit reads configuration, it does not observe runs.
+ * healthy or working — Orrit reads configuration, it does not observe runs.
  */
 
 export const EVIDENCE_LABEL: Record<Evidence, string> = {

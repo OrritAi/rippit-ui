@@ -4,8 +4,9 @@ import type { ProviderId } from "@/lib/connectors/types";
 /*
  * Workflow map model types. `buildMap` (model.ts) turns the link map plus
  * whatever summaries are loaded into a tree of MapNodes; the renderer
- * (components/workflowMap) only reads this shape. Everything here is
- * type-only so the model runs under `node --experimental-strip-types`.
+ * (components/workflowMap) only reads this shape. Types, plus the one
+ * literal list a type cannot express (`LAYERS`); nothing here imports a
+ * value, so the model still runs under `node --experimental-strip-types`.
  */
 
 /** "{source}:{refId}" — the key the link map, the summary store and the
@@ -39,6 +40,102 @@ export interface PillState {
   /** The link's `from.stepId` did not resolve to a captured step, so the
    *  pill hangs off the entry node instead. */
   unresolvedStep?: boolean;
+  /** This workflow is drawn open at ANOTHER call site, and this pill says
+   *  where. A workflow called from several steps is several pills but open at
+   *  one of them; every other copy names it, so a copy the reader left open
+   *  and later finds closed is never a mystery. Unset whenever no copy is
+   *  open — folding the open one resets every other back to "+ expand". */
+  openAt?: { id: string; where: string };
+}
+
+/**
+ * How much of a workflow the canvas draws — a ladder of description the
+ * reader climbs deliberately, never something zoom does to them.
+ *
+ *  macro     what this workflow IS: the trigger, its run-in packed into one
+ *            card, the fan-out, and everything past it as a single element
+ *            ("9 outcomes · 5 patterns"). Most nodes are withheld on purpose.
+ *  structure the default: trunk steps individually, plus one card per
+ *            distinct branch shape. This is the working view.
+ *  steps     every step the platform has, however much it repeats.
+ *
+ * One rung down from `structure` is per-card, not global: opening one arm
+ * draws that arm and leaves its siblings alone. One rung below that is the
+ * sidebar, which is the same at every rung.
+ */
+export type Layer = "macro" | "structure" | "steps";
+
+/** The rungs, coarse to fine — the order the control and Esc walk. */
+export const LAYERS: readonly Layer[] = ["macro", "structure", "steps"];
+
+/** One arm behind a card standing for a whole fan-out. */
+export interface FoldMember {
+  /** The arm's first step. */
+  stepId: string;
+  /** Its branch label — "No-Showed". Never truncated. */
+  label: string;
+}
+
+/**
+ * A route card standing for more than itself: its steps are withheld from
+ * the model (never built, so nothing counts, measures or tab-stops on them)
+ * and the card says what it stands for.
+ *
+ * At Structure that is always ONE arm: every branch is its own card, named
+ * for itself, and branches that share a shape are never merged into one card.
+ * Only the Overview's card for a whole fan-out stands for many arms at once.
+ *
+ * The card is always a real node — the route that already existed for that
+ * branch. Nothing synthetic enters `byId`.
+ */
+export interface FoldState {
+  /** What this one card stands for.
+   *  "arm"  — its own branch, and nothing else (the `structure` rung).
+   *  "band" — every arm of one fan-out as a single element (the `macro`
+   *           rung). It claims a count and a variety, never a sameness. */
+  scope: "arm" | "band";
+  /** Distinct shapes among the arms it stands for. Equal to `count` when
+   *  every arm differs — then the card says "9 outcomes" and nothing more. */
+  patterns: number;
+  /** The arm's first step. `armKey()` builds the `expanded` key that opens it. */
+  armId: string;
+  /** The reader opened it: the chain is drawn and the card offers "fold". */
+  open: boolean;
+  /** Steps in this one arm, its head included. */
+  steps: number;
+  /** What the arm does, in one line: its first step's label. */
+  pattern: string;
+  /** Arms this card stands for: always 1 for a branch card, the fan-out's
+   *  outcome count for a band card. */
+  count: number;
+  /** Steps across every arm it stands for. */
+  totalSteps: number;
+  /** A band card's other arms — never drawn as chips, only read aloud and
+   *  named in the panel. Always empty on a branch card. */
+  members: FoldMember[];
+}
+
+/**
+ * A step standing for the steps that follow it. The card is the first of
+ * them, so clicking it opens that step's own panel; while it is shut the chain
+ * continues from it to whatever they led to, which is one edge instead of
+ * nine cards. Two kinds, told apart by how they open:
+ *  - a TILE (`inPlace`): PACK_AT or more consecutive steps doing one thing.
+ *    It opens in place under `armKey(key, <this step>)`, exactly as an arm
+ *    does, and stays a pack while open so its cap shows filled and a second
+ *    press folds the steps back. Two steps are a pair, never a tile.
+ *  - a RUN: the Overview's "Prepare ×9", revealed only by descending to
+ *    Structure.
+ */
+export interface PackState {
+  /** Steps it stands for, this card's own included. */
+  steps: number;
+  /** The last step it stands for. */
+  lastId: string;
+  /** A tile: its chip opens it in place instead of descending a rung. */
+  inPlace?: boolean;
+  /** A tile the reader opened: its steps are drawn after this card. */
+  open?: boolean;
 }
 
 export interface MapNode {
@@ -86,13 +183,25 @@ export interface MapNode {
    *  once elsewhere and a `jump` pair points at it. */
   jumpTo?: { stepId: string; targetName: string };
   /** Steps only: continues the previous sibling's chain — its incoming edge
-   *  comes from that sibling (vertical), not from the parent. */
+   *  comes from that sibling, not from the parent. */
   chained?: boolean;
+  /** Steps and routes of the viewed workflow: its own flow, which wears the
+   *  main-flow colour. */
+  main?: boolean;
+  /** This card's line runs top to bottom: a connected workflow's pill, and
+   *  the steps of that workflow's trunk. Every other line — the viewed
+   *  workflow's, and every branch lane, wherever it sits — runs left to
+   *  right. */
+  down?: boolean;
+  /** Routes only: this branch is drawn as one card (see `FoldState`). */
+  fold?: FoldState;
+  /** Steps only: the steps after it drawn as one card (see `PackState`). */
+  pack?: PackState;
   /** Pills: this is the workflow being viewed (every copy of it). */
   isViewed?: boolean;
   /** Pills of a workflow other than the viewed one: where to open it in
-   *  Rippit — `/w/<source>/<refId>`. Steps and routes never carry it. */
-  rippitHref?: string;
+   *  Orrit — `/w/<source>/<refId>`. Steps and routes never carry it. */
+  orritHref?: string;
   pill?: PillState;
   /** Name or description matches the current filter query. */
   hit: boolean;
@@ -112,9 +221,38 @@ export interface EdgePair {
   /** tree = parent → child; join = a branch tail into a shared step rendered
    *  once; jump = a "Go to" step to its target. */
   kind: EdgeKind;
-  /** "v": a chain edge, drawn straight from the source's bottom-centre (+5)
-   *  to the target's top-centre (−5). Absent: right-centre → left-centre. */
-  anchor?: "v";
+  /**
+   * How the edge meets its two cards. The viewed workflow's own flow runs LEFT
+   * TO RIGHT: consecutive steps sit side by side in one top-aligned row, and
+   * a workflow a step calls hangs BELOW that step. A connected workflow runs
+   * TOP TO BOTTOM: its steps stack under its pill, left-aligned with it.
+   *
+   *  "h"    — a chain link in the main flow: the next card in the same row. A
+   *           straight horizontal line on the row's rail, from the source's
+   *           right edge to the target's left edge, both at
+   *           `target.top + CHAIN_RAIL_Y`. Measured from the TARGET, which is
+   *           always a top-aligned step card; the source may be a pill
+   *           starting the row, which the layout nudges so its centre — not
+   *           its top + CHAIN_RAIL_Y — sits on that rail. Taking the height
+   *           from the target keeps every chain line straight whichever kind
+   *           of card it leaves.
+   *  "v"    — a chain link in a connected workflow: the next card below, in a
+   *           left-aligned column. A straight vertical line at
+   *           `x = target.left + DROP_X`, under the target's puck, from the
+   *           source's bottom edge to the target's top edge. Measured from the
+   *           TARGET for the same reason as "h"; the column's left alignment
+   *           puts it under the source's puck too, and inside a pill's width.
+   *  "drop" — a main-flow step to a workflow pill hanging below it: from the
+   *           source's bottom edge at `x = source.left + DROP_X`, straight
+   *           down, then right into the target's left edge at its vertical
+   *           centre.
+   *  absent — everything else, routed as before: a fan-out to its branches,
+   *           a group to a chain that does not continue its own row or column,
+   *           a pill called from inside a connected workflow (it sits to the
+   *           right of its step), a pill in the callers block. Cross pairs
+   *           (join / jump) never carry one.
+   */
+  anchor?: "h" | "v" | "drop";
 }
 
 export type SummaryEntry =
@@ -131,6 +269,10 @@ export interface MapCounts {
   matchedRoots: number;
   /** Callers ∪ direct targets of the viewed workflow. */
   connected: number;
+  /** Cards standing for a folded arm (`fold` set and not open). */
+  folded: number;
+  /** Steps those cards withhold (equals `hiddenSteps.size`). */
+  withheld: number;
 }
 
 export interface MapModel {
@@ -147,6 +289,11 @@ export interface MapModel {
   byId: Map<string, MapNode>;
   /** `${WorkflowKey}:${stepId}` → the first rendered node for that step. */
   byStep: Map<string, MapNode>;
+  /** `${WorkflowKey}:${stepId}` for every step a fold withholds → the
+   *  `expanded` key that reveals it. A `?step=` that misses `byStep` looks
+   *  here, opens that card, and converges one level per rebuild. Fold state
+   *  is never in the URL: the link names a step, the map opens itself. */
+  hiddenSteps: Map<string, string>;
   /** Workflow keys that are open but have no summary entry yet — feed
    *  these to `useSummaryStore.ensure`. */
   wanted: WorkflowKey[];

@@ -38,7 +38,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ kind: st
   const data = current?.data ?? null;
   const title = data?.label || kindLabel(kind);
   useEffect(() => {
-    document.title = `${title} — Assets — Rippit`;
+    document.title = `${title} — Assets — Orrit`;
   }, [title]);
 
   const grouped = new Map<string, RefUses["uses"]>();
@@ -74,7 +74,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ kind: st
                   <ArrowUpRight aria-hidden="true" className="size-[11px]" /> {openLabel(kind)}
                 </a>
               ) : data ? (
-                <span className="text-[10.5px] text-t3" title="Webhooks and endpoints are indexed hashed — Rippit never stores or shows the raw URL">
+                <span className="text-[10.5px] text-t3" title="Webhooks and endpoints are indexed hashed — Orrit never stores or shows the raw URL">
                   no native link
                 </span>
               ) : null}
@@ -117,7 +117,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ kind: st
             )}
             {data && data.uses.length > 0 && (
               <p className="mx-0.5 mt-2.5 text-[11px] text-t3">
-                Renaming or deleting this asset would ripple into {data.uses.length} step{data.uses.length === 1 ? "" : "s"} across {data.workflows} workflow{data.workflows === 1 ? "" : "s"} — Rippit flags every one before you touch it.
+                Renaming or deleting this asset would ripple into {data.uses.length} step{data.uses.length === 1 ? "" : "s"} across {data.workflows} workflow{data.workflows === 1 ? "" : "s"} — Orrit flags every one before you touch it.
               </p>
             )}
           </div>

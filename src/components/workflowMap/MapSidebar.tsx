@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { GitBranch } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ApiError, type ExecutionBundles, type ExecutionPayload, type ExecutionsResponse, type ExecutionTrace, type ProjectedField, type WorkflowCard } from "@/app/lib/api";
 import { getConnector } from "@/lib/connectors";
@@ -26,8 +27,9 @@ import { nodeLink } from "./nodeLink";
  * MapSidebar — the 322px panel for the selected node. Only what informs:
  * header (puck · name · "App · #ordinal" · ×, plus a health line only when
  * something is wrong) → actions → exception notes only (a "Go to" step's
- * target with Show, a Make step's filter/wait, a pill whose steps Rippit
- * cannot show, the changed/comments note) → Issues (when any) → Runs (Make
+ * target with Show, a Make step's filter/wait, a pill whose steps Orrit
+ * cannot show, a branch card and what it stands for, the changed/comments
+ * note) → Issues (when any) → Runs (Make
  * only, when there is run data) → "Replay · in this run" while a run is
  * replayed (triage-accented header; state, bundle count, warning / error
  * text; the entry node loads its input on demand; for a related workflow's
@@ -124,7 +126,15 @@ export function MapSidebar({
   }
   const title = desc?.title ?? node.name;
   const ordinal = desc?.ordinal ?? mod?.ordinal ?? null;
-  const subline = [appName(app), ordinal ? `#${ordinal}` : node.kind === "step" ? null : node.kind].filter(Boolean).join(" · ");
+  /* A branch belongs to no app, so it gets neither an app name nor the model's
+     internal `route` kind: GoHighLevel calls it a branch, and so does the
+     canvas. A card standing for a whole fan-out says how many. */
+  const isBranch = node.kind === "route";
+  const subline = isBranch
+    ? node.fold?.scope === "band"
+      ? "Branches"
+      : "Branch"
+    : [appName(app), ordinal ? `#${ordinal}` : node.kind === "step" ? null : node.kind].filter(Boolean).join(" · ");
   const warn = health && health !== "no issues detected" ? health : null;
   const link = nodeLink(node);
   const Sections = connector.DetailSections;
@@ -140,18 +150,37 @@ export function MapSidebar({
   } else if (isPill) {
     const p = node.pill;
     if (p?.unavailable) notes.push("This connection exposes names and status only, not steps");
-    else if (p?.error === "not-captured") notes.push(`Rippit has not captured this ${connector.nouns.workflow}'s steps yet`);
-    else if (p?.error === "not-synced") notes.push(`This ${connector.nouns.workflow} is not synced into Rippit`);
+    else if (p?.error === "not-captured") notes.push(`Orrit has not captured this ${connector.nouns.workflow}'s steps yet`);
+    else if (p?.error === "not-synced") notes.push(`This ${connector.nouns.workflow} is not synced into Orrit`);
     else if (p?.error === "fetch-failed") notes.push("Its steps could not be fetched just now");
     if (p?.link?.status === "dead") notes.push("The link into this workflow is dead");
   }
+  /* A card standing for more than itself says exactly what — the canvas has
+     room for a count, the panel has room for the claim behind it, and the
+     two claims are different. A band card says how many outcomes there are
+     and how many shapes; it must never say they match. */
+  const fold = node.fold;
+  if (fold && !fold.open) {
+    if (fold.scope === "band")
+      notes.push(
+        `Every outcome of this step, drawn as one card: ${fold.count} of them in ${fold.patterns} distinct shape${fold.patterns === 1 ? "" : "s"}, ${fold.totalSteps} steps in all. Open it to see the shapes.`,
+      );
+    else notes.push(`Stands for ${fold.steps} steps — open the card to draw them`);
+  }
+  if (node.pack && !node.pack.open) notes.push(`Drawn with the ${node.pack.steps - 1} steps that follow it, which run straight through`);
   if (note) notes.push(note);
 
   return (
     <div className="thin-scroll wm-slidein box-border h-full w-[322px] overflow-auto px-4 pb-6 pt-4">
       {/* Nothing in here truncates: names, sublines and values wrap. */}
       <div className="mb-2 flex items-start gap-2.5">
-        <AppPuck app={app} size={34} />
+        {isBranch ? (
+          <span aria-hidden="true" className="flex size-[34px] flex-none items-center justify-center rounded-[9px] border border-line text-t3">
+            <GitBranch className="size-[16px]" />
+          </span>
+        ) : (
+          <AppPuck app={app} size={34} />
+        )}
         <div className="min-w-0 flex-1 pt-px">
           <div className="text-[13.5px] font-semibold leading-[1.3] [overflow-wrap:anywhere]">{title}</div>
           <div className="mt-0.5 font-mono text-[10.5px] leading-[1.4] text-t3 [overflow-wrap:anywhere]">{subline}</div>
@@ -169,9 +198,9 @@ export function MapSidebar({
         </MapTip>
       </div>
       <div className="mb-5 mt-3 flex flex-wrap items-center gap-2">
-        {node.pill && node.rippitHref && (
+        {node.pill && node.orritHref && (
           <Button size="sm" variant="ghost" asChild>
-            <Link href={node.rippitHref}>Open in Rippit</Link>
+            <Link href={node.orritHref}>Open in Orrit</Link>
           </Button>
         )}
         {link.href ? (
@@ -306,7 +335,7 @@ const rateLimitText = (platform: string, retryAfter: number | null | undefined) 
  * state line, the bundle count, warning / error text (wrapped, never
  * clamped). The entry node (webhook request) — or the cause module of an
  * incomplete run (its bundle) — carries "Load input": fetched through from
- * the platform at that moment, rendered once, never stored by Rippit.
+ * the platform at that moment, rendered once, never stored by Orrit.
  * What every *other* step received and returned is the Step data section
  * below, on the same fetch-through terms. For a related workflow's step the
  * section is "Replay · in the related run" and names that execution first.

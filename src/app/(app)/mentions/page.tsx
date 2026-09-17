@@ -16,7 +16,7 @@ export default function MentionsPage() {
   const selected = useSearchParams().get("c");
 
   useEffect(() => {
-    document.title = "Mentions — Rippit";
+    document.title = "Mentions — Orrit";
   }, []);
 
   const rows = useMemo<FeedRow[]>(
@@ -60,7 +60,7 @@ export default function MentionsPage() {
                 openHref={hrefForTarget(c.targetKey)}
               />
               <DetailCard title="Thread">
-                <CommentsThread targetType={type} targetKey={c.targetKey} onCountChange={() => window.dispatchEvent(new Event("rippit:comments"))} />
+                <CommentsThread targetType={type} targetKey={c.targetKey} onCountChange={() => window.dispatchEvent(new Event("orrit:comments"))} />
               </DetailCard>
             </div>
           )}

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import posthog from "posthog-js";
 import { toast } from "sonner";
 import { renameWorkspace } from "@/app/lib/api";
 import { useRole, useWorkspace } from "@/components/app/WorkspaceProvider";
@@ -33,6 +34,7 @@ export default function OrganizationPage() {
     setBusy(true);
     try {
       await renameWorkspace(current.id, next);
+      posthog.capture("workspace_renamed");
       toast.success(`Organization renamed to ${next}`);
       setName("");
       refresh();
@@ -104,7 +106,7 @@ export default function OrganizationPage() {
             <div className="flex items-center gap-3 border-t border-line2 pb-0.5 pt-[11px]">
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] font-medium text-err-text">Delete organization</p>
-                <p className="mt-px text-[12px] text-t3">Contact rippit to delete this organization.</p>
+                <p className="mt-px text-[12px] text-t3">Contact orrit to delete this organization.</p>
               </div>
             </div>
           </div>

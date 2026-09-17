@@ -165,7 +165,7 @@ function BootScreen({ visible, line }: { visible: boolean; line: string }) {
           <div className="flex flex-col items-center gap-[14px]">
             <LogoMark size={26} style={rise(0)} />
             <div className="text-[20px] font-extrabold tracking-[-0.02em]" style={rise(120)}>
-              rippit
+              orrit
             </div>
             <div role="status" className="flex items-center gap-[7px] font-mono text-[11.5px] text-t3" style={rise(240)}>
               <span

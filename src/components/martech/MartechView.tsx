@@ -81,7 +81,7 @@ export function MartechView({
             <div className="anim-fade-up max-w-md rounded-card border border-line bg-panel p-6 text-center shadow-[var(--shadow-card)]">
               <h2 className="mb-1.5 text-[15px] font-semibold">Nothing mapped yet</h2>
               <p className="text-[13px] text-t2">
-                This funnel has no steps yet. Detection reads the funnel directory and the workflows Rippit has already captured — it never touches GoHighLevel.
+                This funnel has no steps yet. Detection reads the funnel directory and the workflows Orrit has already captured — it never touches GoHighLevel.
               </p>
               {graph.funnel.origin === "manual" && onDetect && (
                 <Button onClick={onDetect} disabled={detecting} className="mt-4 h-8 cursor-pointer rounded-control text-[12.5px] font-semibold disabled:opacity-50">

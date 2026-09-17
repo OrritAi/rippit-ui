@@ -49,7 +49,7 @@ export default function MapPage() {
   const viewId = legacy && legacy !== "detail" && legacy !== "list" && legacy !== "map" ? legacy : searchParams.get("view") && !["detail", "list", "map"].includes(searchParams.get("view")!) ? searchParams.get("view") : null;
 
   useEffect(() => {
-    document.title = "System map — Rippit";
+    document.title = "System map — Orrit";
   }, []);
 
   useEffect(() => {

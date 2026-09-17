@@ -49,7 +49,7 @@ export const clickfunnelsConnector: ConnectorDescriptor = {
     helpText:
       "In ClickFunnels open Team Settings → Developer Portal, add a platform application and copy an API access token. " +
       "The token reaches every workspace on the team; the subdomain says which one to document. " +
-      "API access needs the Scale, Optimize, Dominate or Agency plan. Rippit only reads.",
+      "API access needs the Scale, Optimize, Dominate or Agency plan. Orrit only reads.",
   },
 
   async fetchTree(conn) {

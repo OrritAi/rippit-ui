@@ -1,6 +1,18 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  /*
+   * `next dev` takes a lock on its build directory, so one checkout can only
+   * run one dev server — which is a problem when a geometry or screenshot run
+   * needs a server configured differently from the one already up (a snapshot
+   * directory, say). Pointing this elsewhere gives that run its own build dir
+   * and its own lock:
+   *
+   *   NEXT_DIST_DIR=.next-check PORT=3111 npm run dev
+   *
+   * Unset, which is every normal case, it is exactly `.next` as before.
+   */
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   async redirects() {
     // Legacy platform-specific routes → unified /w/[provider]/[id]
     return [

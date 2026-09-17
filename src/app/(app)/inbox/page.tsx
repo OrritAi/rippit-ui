@@ -24,7 +24,7 @@ export default function InboxPage() {
   const item = itemKey ? all.find((i) => i.key === itemKey) ?? null : null;
 
   useEffect(() => {
-    document.title = "Needs you — Rippit";
+    document.title = "Needs you — Orrit";
   }, []);
 
   if (itemKey) {
@@ -65,7 +65,7 @@ export default function InboxPage() {
               )}
               {item.group === "mentions" && item.targetKey && (
                 <DetailCard title="Thread">
-                  <CommentsThread targetType={item.targetKey.startsWith("node:") ? "node" : item.targetKey.startsWith("issue:") ? "issue" : "workflow"} targetKey={item.targetKey} onCountChange={() => window.dispatchEvent(new Event("rippit:comments"))} />
+                  <CommentsThread targetType={item.targetKey.startsWith("node:") ? "node" : item.targetKey.startsWith("issue:") ? "issue" : "workflow"} targetKey={item.targetKey} onCountChange={() => window.dispatchEvent(new Event("orrit:comments"))} />
                 </DetailCard>
               )}
             </div>
@@ -77,7 +77,7 @@ export default function InboxPage() {
 
   const groups: { label: string; icon: LucideIcon; sev: "err" | "warn" | null; blurb: string; items: InboxItem[] }[] = [
     { label: "Broken", icon: Unplug, sev: "err", blurb: "Dead cross-links, missing targets and failed runs — data may have silently stopped flowing.", items: broken },
-    { label: "Changed since you looked", icon: History, sev: "warn", blurb: "Edits Rippit detected at sync that you haven't reviewed yet.", items: changed },
+    { label: "Changed since you looked", icon: History, sev: "warn", blurb: "Edits Orrit detected at sync that you haven't reviewed yet.", items: changed },
     { label: "Mentions & open threads", icon: AtSign, sev: null, blurb: "Comments waiting on you.", items: threads },
   ];
 

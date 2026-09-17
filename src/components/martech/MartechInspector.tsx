@@ -32,8 +32,8 @@ import { ago } from "@/lib/time";
 /*
  * Martech inspector — the one right dock of the Martech canvas, keyed by the
  * selected node. Info only, in the same vocabulary as the canvas: a node is
- * "Configured" (read from the platform) or "Not captured" (Rippit has
- * nothing for it). Never a health state, never "fires" — Rippit reads
+ * "Configured" (read from the platform) or "Not captured" (Orrit has
+ * nothing for it). Never a health state, never "fires" — Orrit reads
  * configuration, it does not observe runs.
  *
  * Sections render only when they have something to say: what happens here,
@@ -294,7 +294,7 @@ function WhatHappensHere({ node, graph, stageName }: { node: MartechNode; graph:
       return node.inferred ? (
         <>
           <P>Traffic is assumed to come from {node.label}.</P>
-          <Hint>{graph.adPlatform?.reason ?? "Inferred from conversion targets and attribution fields in the workflows."} Rippit reads nothing from the ad account itself.</Hint>
+          <Hint>{graph.adPlatform?.reason ?? "Inferred from conversion targets and attribution fields in the workflows."} Orrit reads nothing from the ad account itself.</Hint>
         </>
       ) : (
         <>
@@ -344,7 +344,7 @@ function WhatHappensHere({ node, graph, stageName }: { node: MartechNode; graph:
     }
     case "stage": {
       const s = node.stage;
-      if (!s) return <P>Automations Rippit could not place on a page. They are listed here so nothing is hidden, and never guessed onto a step.</P>;
+      if (!s) return <P>Automations Orrit could not place on a page. They are listed here so nothing is hidden, and never guessed onto a step.</P>;
       return (
         <>
           <P>
@@ -430,7 +430,7 @@ function WhatHappensHere({ node, graph, stageName }: { node: MartechNode; graph:
             {a.destinationSoftware && <KvRow k="Writes to" v={a.destinationSoftware} />}
             {a.conversion && <KvRow k="Conversion event" v={`${platformLabel(a.conversion.platform)} · ${a.conversion.eventName}`} />}
           </div>
-          {a.conversion && <Hint>A configured Conversions API action — Rippit does not see whether the event was delivered.</Hint>}
+          {a.conversion && <Hint>A configured Conversions API action — Orrit does not see whether the event was delivered.</Hint>}
         </>
       );
     }

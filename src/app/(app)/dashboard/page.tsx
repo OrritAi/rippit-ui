@@ -9,7 +9,7 @@ import { WorkflowGlobe } from "@/components/dashboard/globe/WorkflowGlobe";
  */
 export default function DashboardPage() {
   useEffect(() => {
-    document.title = "Rippit";
+    document.title = "Orrit";
   }, []);
   return <WorkflowGlobe />;
 }

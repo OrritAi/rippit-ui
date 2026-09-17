@@ -48,7 +48,7 @@ function SettingsFrame({ children }: { children: React.ReactNode }) {
   const shortcut = hydrated && !/Mac|iPhone|iPad/.test(navigator.platform) ? "Ctrl K" : "⌘K";
 
   useEffect(() => {
-    document.title = "Settings — Rippit";
+    document.title = "Settings — Orrit";
   }, []);
 
   const name = current?.name ?? "";

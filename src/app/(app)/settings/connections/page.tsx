@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import posthog from "posthog-js";
 import { toast } from "sonner";
 import { useRole } from "@/components/app/WorkspaceProvider";
 import { useConnections } from "@/components/app/ConnectionsProvider";
@@ -57,6 +58,7 @@ export default function ConnectionsPage() {
         actions={{ syncing, canSync, sync, disconnect }}
         onAdd={async (provider, values) => {
           await add(provider, values);
+          posthog.capture("connection_added", { provider });
           toast.success(`${getConnector(provider).label} connected — syncing`);
         }}
       />

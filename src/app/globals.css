@@ -6,7 +6,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
-  Rippit design system — monochrome zinc chrome, color reserved for
+  Orrit design system — monochrome zinc chrome, color reserved for
   status + app identity. Light is the default theme; dark is applied
   via the `.dark` class on <html>.
 */
@@ -42,6 +42,8 @@
   --dur-fast: 150ms;
   --dur: 220ms;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Anything leaving. The workflow map's layer push is the only user. */
+  --ease-in: cubic-bezier(0.4, 0, 0.9, 1);
 
   /* Elevation: cards catch light (inset top highlight) + short ambient;
      floats (menus, palette, inspector) cast a deeper, softer shade */
@@ -79,6 +81,14 @@
      (rings, edges, pill tint) needs 3:1; text role (chips, hits) 4.5:1. */
   --map-accent: #0284c7;
   --map-accent-text: #0369a1;
+  /* The viewed workflow's own cards — its main flow and its branches. A cool
+     indigo, deliberately not the accent: the accent already means "a
+     connected workflow" (the pill tint), and a workflow branching off the
+     main flow has to read as somewhere else. Surface only — text on it keeps
+     --text / --t3 (scripts/contrast-audit.mjs); the line is decorative, like
+     --line. */
+  --map-main: #eef2ff;
+  --map-main-line: #c7d2fe;
 
   /* Triage layer accent — the operator flows layered over the visualization
      (replay banner, the active Replay tool, "Replay · in this run", the
@@ -156,6 +166,8 @@
 
   --map-accent: #0ea5e9;
   --map-accent-text: #0ea5e9;
+  --map-main: #151729;
+  --map-main-line: #2f3563;
 
   --triage: #f59e0b;
 
@@ -194,6 +206,8 @@
   --color-line-strong: var(--line-strong);
   --color-map-accent: var(--map-accent);
   --color-map-accent-text: var(--map-accent-text);
+  --color-map-main: var(--map-main);
+  --color-map-main-line: var(--map-main-line);
   --color-triage: var(--triage);
 
   /* shadcn/ui mapping (monochrome accent rule: primary = text on bg) */
@@ -608,7 +622,302 @@ body {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    /*
+      The delay has to go with the duration, and leaving it out is not a
+      rounding error. Any animation carrying `animation-fill-mode: both`
+      holds its element at the animation's *first* keyframe for the whole of
+      its delay. Shortening the duration alone therefore does not remove the
+      animation for a reader who asked for no motion — it replaces it with
+      the start state, held. Refusing to play an animation is not the same as
+      removing it.
+
+      Live example: `.stagger-in` above staggers side-panel children up to
+      260ms with `fadeUp … both`, whose first keyframe is `opacity: 0`.
+      Without this line that is a quarter-second of invisible panel.
+
+      Found on the workflow map, which no longer has the pattern — its rows
+      used to carry an inline stagger with `branchin … both`, whose first
+      keyframe is `opacity: 0; translateX(-12px) scale(0.94)`. It surfaced as
+      geometry rather than as invisibility, because the map skips its unfold
+      measure loop under reduced motion: edges were measured against cards
+      still pinned at that keyframe and sat 34.6px off them. Adding this line
+      took the sweep to zero; the row entrance has since been deleted
+      outright, which is the better fix and the reason this is now a general
+      guard rather than a patch for one component.
+    */
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
   }
 }
 
+
+/*
+  Workflow map — motion (src/components/workflowMap/useMapMotion.ts, timings
+  in src/lib/workflowMap/motion.ts).
+
+  Everything here is the declarative half. It exists so that a card React
+  re-renders mid-transition can never be left holding an inline style — the
+  failure that strands an element the moment its node is reused.
+
+  `.wm-motion` is put on the zoomed content box by the hook, in an effect,
+  and only when motion is on. So server render, a JS failure, reduced motion
+  and LITE all render the map fully visible with none of this applying: the
+  hiding rule below can never be the reason a card is invisible. An invisible
+  card is an unclickable card, and that has cost a debugging cycle before.
+
+  Everything is applied to `[data-wm-box]` — a card's wrapper, marked by the
+  hook — and never to the card itself, which already owns its own hover lift
+  and selection transition. One element, one owner of `transform`.
+*/
+
+/* Not yet revealed. The hook reveals each card once, in DOM order, as a pan
+   brings it into view, and never re-hides one. */
+.wm-motion [data-wm-box]:not([data-wm-shown]) {
+  opacity: 0;
+}
+
+.wm-motion [data-wm-box] {
+  transition:
+    opacity 340ms var(--ease-out),
+    transform 340ms var(--ease-out);
+}
+
+/*
+  Selecting a step. The selected card grows and everything unrelated recedes
+  — to 0.55, not the handoff's 0.22, because this map's whole purpose is
+  making the shape of a 119-step workflow legible in one pass and clicking a
+  card is its primary interaction. Erasing the shape on every click would
+  fight the screen's reason for existing. Neighbours (read off the edges'
+  own data-from / data-to) stay lit, so a selection shows you what it
+  connects to rather than only itself.
+
+  A scale, not a `translateZ`. Worth writing down, because `translateZ` was
+  the obvious move and it is theatre: with no rotation, `translateZ(26px)`
+  under `perspective(1400px)` resolves to a scale of 1.019 — the same
+  animation with more machinery and a 3D story attached to it.
+
+  The 3D in `components/walk/` is right for three reasons the canvas does
+  not share: it shows one subject at a time from a fixed camera angle
+  (`perspectiveOrigin` never moves, the world translates instead); its depth
+  axis IS the data (z is position in the run); and it has no text read
+  off-axis (a monogram on the cube, a flat billboard for the label). The
+  canvas is the opposite on every count — many subjects, all text, at every
+  screen position — so any perspective over it foreshortens each card by
+  where it happens to sit, which attacks the legibility the map exists to
+  produce. GOTCHAS #6 rules out the compensating trick anyway: type
+  participates in layout under CSS `zoom`.
+*/
+.wm-motion [data-wm-box][data-wm-sel] {
+  transform: scale(1.025);
+  z-index: 2;
+}
+.wm-motion:has([data-wm-sel]) [data-wm-box]:not([data-wm-near]) {
+  opacity: 0.55;
+}
+
+/*
+  A collapsed group is a stack, and its thickness is its count — the only
+  place depth carries information on this canvas (see motion.ts: 3D belongs
+  to the walk, where the z axis is run position and one subject is read at a
+  time from a fixed angle; here it would foreshorten text by screen
+  position). Two layers is enough to read as "more behind this"; a third
+  adds no information and starts to look like a shuffle.
+
+  Pseudo-elements, so a stacked card costs no DOM and no measurement — its
+  own box is unchanged, which keeps every edge anchored exactly where the
+  measure hook put it.
+
+  Applied by the tree to a collapsed group card, not by the motion hook:
+  what is a group is structure, and structure is the tree's to decide.
+*/
+.wm-stack {
+  position: relative;
+}
+.wm-stack::before,
+.wm-stack::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: 1px solid var(--line);
+  border-radius: inherit;
+  background: var(--pill);
+}
+.wm-stack::before {
+  transform: translate(4px, 4px);
+  opacity: 0.7;
+}
+.wm-stack::after {
+  transform: translate(8px, 8px);
+  opacity: 0.4;
+}
+/*
+  No fan-apart on expand. `.wm-stack` is applied only while the card is
+  closed, so the layers are gone in the same commit the card opens — and the
+  moment is occluded anyway, because descending into a group dims the whole
+  content box under the layer push while its members fly out of it. The
+  stack's job is static: to say, at rest, that this card stands for more
+  than one thing.
+*/
+
+/*
+  Reduced motion. The global rule above neutralises keyframes; these are
+  transitions and pseudo-element offsets, which it does not reach. The hook
+  independently skips every tween and reveals every card, so this is the
+  stylesheet half of the same guarantee rather than the only line of
+  defence.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .wm-motion [data-wm-box] {
+    transition: none;
+  }
+  .wm-motion [data-wm-box]:not([data-wm-shown]) {
+    opacity: 1;
+  }
+}
+
+/*
+  `.wm-rise` and `.wm-branch` are still used — by MapToolbar and MapMinimap,
+  which sit outside the `inner` box and want their entrance. What went was
+  MapTree's *application* of them to every row.
+
+  No suppression rule is needed any more, and the one that used to live here
+  could not have stayed: `.wm-motion` is toggled on `enabled && !gaveUp`, so
+  the moment the motion layer's failsafe gave up, the class came off and the
+  row entrance it was suppressing sprang back to life — entrance animations
+  starting at the exact instant motion failed. Deleting the application
+  closes that; suppressing it never could.
+*/
+
+/* Rule one at the element level: a per-frame update carries no transition.
+   While Motion is writing opacity and transform every frame, the 340ms
+   transition above would make each frame chase the last — smearing, not
+   smoothness. `useMapMotion` sets this for the length of the tween only. */
+.wm-motion [data-wm-box][data-wm-revealing] {
+  transition: none;
+}
+
+/* A line is held until its draw reaches it. Without this a layer change
+   shows the new layer's edges at full strength while its cards are still
+   arriving — the empty-canvas-with-SVG picture that GOTCHAS #1 describes —
+   and then flickers, because the draw's first act is to set the dash offset
+   to the path length and make a visible line vanish before it grows back.
+   Applied to the `<g data-edge>` rather than the path, so a label riding on
+   the line — a branch condition, once those move onto the edges they gate —
+   is held with it instead of hanging in empty space on its own. Released as
+   each draw starts, and unconditionally by its failsafe: a permanently
+   invisible edge is a missing workflow. */
+.wm-motion [data-wm-undrawn] {
+  opacity: 0;
+}
+
+/*
+  The layer push — the content box scaling about the clicked element and
+  dimming, while the rung underneath is swapped.
+
+  A state change rather than a tween, and that is the whole point. Driven
+  imperatively it stranded: a stopped Motion animation can write its sampled
+  value back to inline style on a later tick than the call that stopped it,
+  so a synchronous clear runs first and the commit lands on top of it. The
+  map was left at `scale(0.945)` / `opacity 0.447` with no animation running
+  — permanently dim and 5.5% undersized, and every edge off its card, since
+  the measure hook divides client rects by CSS `zoom` alone.
+
+  Removing the attribute removes the transition with it, so the box returns
+  to identity in the same tick and nothing can race it. That is also exactly
+  what the ordering contract in useMapMotion.ts requires: the box must be
+  clean before the rung's state change commits, because canvas-build's scroll
+  anchoring measures the clicked card inside it.
+
+  The three numbers come from lib/workflowMap/motion.ts as custom properties,
+  so they keep one home.
+*/
+.wm-motion[data-wm-push] {
+  transform: scale(var(--wm-push-scale, 1));
+  opacity: var(--wm-push-fade, 1);
+  transition:
+    transform var(--wm-push-ms, 190ms) var(--ease-in),
+    opacity var(--wm-push-ms, 190ms) var(--ease-in);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wm-motion[data-wm-push] {
+    transition: none;
+  }
+}
+
+/*
+  The chip on a pill whose scenario is open in another branch
+  (`↗ open in Canceled`). Opening a scenario in one branch closes the copy
+  open in another, so this label changes in a place the reader may not be
+  looking — sometimes in answer to a branch fold elsewhere on the canvas,
+  with no pill clicked at all.
+
+  The persistent text carries the meaning; this fade is only a courtesy for
+  whoever happens to be watching. A transient cue on its own was rejected for
+  exactly that reason: it reaches only someone already looking at that pill,
+  and the question "why is this shut?" gets asked ten seconds later.
+
+  Restarted by the label span's React `key` (WorkflowPill), which is keyed
+  on what the label *means* — `elsewhere:<open copy id>`, or `here` — and
+  never on how it happens to be rendered. That distinction is the whole
+  design, and it was nearly got wrong:
+
+  - Too little identity misses a real change. A key of the bare state
+    (`elsewhere`) cannot tell `open in Canceled` from `open in Reschedule`,
+    so the one change the reader did not cause would not fade.
+  - Too much identity fires on changes that mean nothing. A key of the label
+    *text* looks right and is not: in far mode the chip collapses to a glyph
+    (`↗ open in Canceled` → `↗`), so crossing FAR_AT would give every
+    open-elsewhere chip on screen a new key and restart its fade at once — an
+    animation caused by zooming, on the most common gesture on the canvas,
+    which is exactly what §6 says nothing may respond to.
+
+  The open copy's id changes when, and only when, the scenario moves. Only
+  the elsewhere label carries the class, so a reset to the plain count — and
+  a branch fold that resets several at once — is silent rather than a burst
+  of simultaneous fades.
+
+  Deliberately no `animation-delay` and no `fill-mode: both`: that pairing
+  pins an element at its first keyframe under reduced motion, which is the
+  failure recorded in design/principles.md §6. Reduced motion gets an
+  explicit `animation: none`; LITE gets nothing because it is scoped under
+  `.wm-motion`. Opacity only, so it changes no geometry.
+*/
+@keyframes wm-chipin {
+  from { opacity: 0.15; }
+  to { opacity: 1; }
+}
+.wm-motion .wm-chip-elsewhere {
+  animation: wm-chipin var(--dur) var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .wm-motion .wm-chip-elsewhere {
+    animation: none;
+  }
+}
+
+/*
+  A pill's end cap, the moment its steps are showing: one ring leaves the
+  filled circle and fades, so the eye lands where the steps come out of.
+
+  Played by mounting, not by a class toggle: WorkflowPill renders the ring
+  only while the pill is open and loaded, so it runs once when the steps
+  arrive — after a load, not at the click — and never on a zoom or a pan,
+  which remount nothing. Box-shadow only, on an absolutely positioned child
+  of the circle, so it changes no geometry an edge is measured from. No delay
+  and no fill, for the reason given above; reduced motion gets an explicit
+  `none`, and LITE nothing, being scoped under `.wm-motion`.
+*/
+@keyframes wm-cap-ping {
+  from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--map-accent) 45%, transparent); }
+  to { box-shadow: 0 0 0 9px color-mix(in srgb, var(--map-accent) 0%, transparent); }
+}
+.wm-motion .wm-cap-ping {
+  animation: wm-cap-ping 620ms var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .wm-motion .wm-cap-ping {
+    animation: none;
+  }
+}
